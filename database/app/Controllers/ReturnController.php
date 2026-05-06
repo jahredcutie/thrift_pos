@@ -36,20 +36,57 @@ class ReturnController extends Controller {
 
     public function process() {
         $db = getDB();
-        $itemId = $_POST['item_id'];
-        $saleItemId = $_POST['sale_item_id'];
         
         try {
             $db->beginTransaction();
             
-            // 1. Restore item status to 'available'
-            $stmt1 = $db->prepare("UPDATE items SET status = 'available' WHERE id = ?");
-            $stmt1->execute([$itemId]);
-            
-            // 2. Remove from sale_items or mark as returned
-            // For now, let's just delete the record from sale_items to keep it simple and fix the UI
-            $stmt2 = $db->prepare("DELETE FROM sale_items WHERE id = ?");
-            $stmt2->execute([$saleItemId]);
+            if (isset($_POST['return_all_sales']) && $_POST['return_all_sales'] === '1') {
+                // Return ALL items from ALL sales
+                // Get all items from all sales
+                $stmt = $db->query("SELECT item_id FROM sale_items");
+                $items = $stmt->fetchAll();
+                
+                // Restore all items to available
+                foreach ($items as $item) {
+                    $stmt1 = $db->prepare("UPDATE items SET status = 'available' WHERE id = ?");
+                    $stmt1->execute([$item['item_id']]);
+                }
+                
+                // Delete ALL sale items records
+                $stmt2 = $db->query("DELETE FROM sale_items");
+                
+            } elseif (isset($_POST['return_all']) && $_POST['return_all'] === '1' && isset($_POST['sale_id'])) {
+                // Return all items from a single sale
+                $saleId = $_POST['sale_id'];
+                
+                // Get all items from this sale first
+                $stmt = $db->prepare("SELECT item_id FROM sale_items WHERE sale_id = ?");
+                $stmt->execute([$saleId]);
+                $items = $stmt->fetchAll();
+                
+                // Restore all items to available
+                foreach ($items as $item) {
+                    $stmt1 = $db->prepare("UPDATE items SET status = 'available' WHERE id = ?");
+                    $stmt1->execute([$item['item_id']]);
+                }
+                
+                // Delete all sale items records
+                $stmt2 = $db->prepare("DELETE FROM sale_items WHERE sale_id = ?");
+                $stmt2->execute([$saleId]);
+                
+            } else {
+                // Return single item
+                $itemId = $_POST['item_id'];
+                $saleItemId = $_POST['sale_item_id'];
+                
+                // 1. Restore item status to 'available'
+                $stmt1 = $db->prepare("UPDATE items SET status = 'available' WHERE id = ?");
+                $stmt1->execute([$itemId]);
+                
+                // 2. Remove from sale_items
+                $stmt2 = $db->prepare("DELETE FROM sale_items WHERE id = ?");
+                $stmt2->execute([$saleItemId]);
+            }
             
             $db->commit();
             $this->redirect('/returns');

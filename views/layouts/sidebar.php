@@ -7,7 +7,7 @@
                 <div class="w-10 h-10 bg-accent rounded-lg flex items-center justify-center shadow-sm">
                     <i class="fa-solid fa-store text-white text-xl"></i>
                 </div>
-                <h1 :class="sidebarOpen ? 'block' : 'hidden md:block'" class="text-xl font-bold text-primary tracking-tight">ThriftPOS</h1>
+                <h1 :class="sidebarOpen ? 'block' : 'hidden md:block'" class="text-xl font-bold text-primary tracking-tight">Dehlia's Thrift Store</h1>
             </div>
         </div>
 
@@ -19,10 +19,8 @@
                 ['path' => '/dashboard', 'icon' => 'fa-chart-pie', 'label' => 'Dashboard', 'role' => 'admin'],
                 ['path' => '/pos', 'icon' => 'fa-cash-register', 'label' => 'POS', 'role' => 'any'],
                 ['path' => '/reservations', 'icon' => 'fa-calendar-check', 'label' => 'Reservations', 'role' => 'any'],
-                ['path' => '/returns', 'icon' => 'fa-rotate-left', 'label' => 'Returns', 'role' => 'any'],
                 ['path' => '/inventory', 'icon' => 'fa-boxes-stacked', 'label' => 'Inventory', 'role' => 'admin'],
                 ['path' => '/reports', 'icon' => 'fa-chart-line', 'label' => 'Reports', 'role' => 'admin'],
-                ['path' => '/staff', 'icon' => 'fa-people-line', 'label' => 'Manage Staff', 'role' => 'admin'],
             ];
 
             foreach ($menu_items as $item): 

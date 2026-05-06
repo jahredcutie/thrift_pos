@@ -15,13 +15,17 @@ $router->add('GET', '/logout', 'AuthController@logout');
 
 $router->add('GET', '/pos', 'PosController@index');
 $router->add('GET', '/api/items', 'PosController@getItems');
+$router->add('GET', '/api/rack-categories', 'PosController@getRackCategories');
 $router->add('POST', '/api/checkout', 'PosController@checkout');
+$router->add('GET', '/pos/rack-categories', 'PosController@getRackCategories');
+$router->add('POST', '/pos/checkout', 'PosController@checkout');
 $router->add('POST', '/api/paymongo/create', 'PaymentController@create');
 $router->add('POST', '/api/paymongo/mark-paid', 'PaymentController@markPaid');
 
 $router->add('GET', '/dashboard', 'DashboardController@index');
 $router->add('GET', '/inventory', 'InventoryController@index');
 $router->add('POST', '/inventory/add', 'InventoryController@add');
+$router->add('POST', '/inventory/add-bulk', 'InventoryController@addBulk');
 $router->add('POST', '/inventory/update', 'InventoryController@update');
 $router->add('POST', '/inventory/delete', 'InventoryController@delete');
 
@@ -38,15 +42,6 @@ $router->add('POST', '/reservations/delete', 'ReservationController@delete');
 $router->add('POST', '/reservations/complete', 'ReservationController@complete');
 $router->add('POST', '/reservations/cancel', 'ReservationController@cancel');
 $router->add('POST', '/reservations/pay', 'ReservationController@pay');
-
-$router->add('GET', '/returns', 'ReturnController@index');
-$router->add('GET', '/api/sale-items/{id}', 'ReturnController@getSaleItems');
-$router->add('POST', '/returns/process', 'ReturnController@process');
-
-$router->add('GET', '/staff', 'StaffController@index');
-$router->add('POST', '/staff/add', 'StaffController@add');
-$router->add('POST', '/staff/toggle-status', 'StaffController@toggleStatus');
-$router->add('POST', '/staff/delete', 'StaffController@delete');
 
 $router->add('POST', '/user/update-theme', 'UserController@updateTheme');
 

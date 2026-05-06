@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../Models/RackCategory.php';
 
 class ReservationController extends Controller {
     public function __construct() {
@@ -10,7 +11,6 @@ class ReservationController extends Controller {
     }
 
     private function checkAndExpireReservations($db) {
-        // Check if expiration_date column exists first
         $stmtCheckExpire = $db->query("SHOW COLUMNS FROM reservations LIKE 'expiration_date'");
         $hasExpiration = $stmtCheckExpire->fetch() !== false;
         
@@ -18,9 +18,8 @@ class ReservationController extends Controller {
             return;
         }
 
-        // Find all active reservations that are expired
         $stmt = $db->prepare("
-            SELECT r.id, r.item_id 
+            SELECT r.id, r.category_id 
             FROM reservations r 
             WHERE r.status IN ('reserved', 'pending') 
             AND r.expiration_date IS NOT NULL 
@@ -32,14 +31,13 @@ class ReservationController extends Controller {
         foreach ($expiredReservations as $res) {
             try {
                 $db->beginTransaction();
-
-                // Mark reservation as expired
                 $stmtUpdateRes = $db->prepare('UPDATE reservations SET status = ? WHERE id = ?');
                 $stmtUpdateRes->execute(['expired', $res['id']]);
 
-                // Set item back to available
-                $stmtUpdateItem = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
-                $stmtUpdateItem->execute(['available', $res['item_id']]);
+                if ($res['category_id']) {
+                    $stmtUpdateStock = $db->prepare('UPDATE rack_categories SET stock_available = stock_available + 1 WHERE id = ?');
+                    $stmtUpdateStock->execute([$res['category_id']]);
+                }
 
                 $db->commit();
             } catch (Exception $e) {
@@ -52,14 +50,12 @@ class ReservationController extends Controller {
 
     public function index() {
         $db = getDB();
-
-        // First, check and expire any expired reservations
         $this->checkAndExpireReservations($db);
 
         $reservations = $db->query("
-            SELECT r.*, i.name as item_name, i.price, i.image_url, i.tag_color
+            SELECT r.*, r.item_id, rc.name as item_name
             FROM reservations r 
-            JOIN items i ON r.item_id = i.id 
+            LEFT JOIN rack_categories rc ON r.category_id = rc.id 
             ORDER BY r.created_at DESC
         ")->fetchAll();
         
@@ -69,23 +65,21 @@ class ReservationController extends Controller {
     public function add() {
         $db = getDB();
         try {
-            // Support both JSON and FormData/POST
-            $json = json_decode(file_get_contents('php://input'), true);
-            $itemId = $json['item_id'] ?? $_POST['item_id'] ?? null;
-            $customerName = trim($json['customer_name'] ?? $_POST['customer_name'] ?? '');
-            $contactNumber = trim($json['contact_number'] ?? $_POST['contact_number'] ?? '');
-            $notes = trim($json['notes'] ?? $_POST['notes'] ?? '');
-            $durationDays = isset($json['duration_days']) ? (int)$json['duration_days'] : (isset($_POST['duration_days']) ? (int)$_POST['duration_days'] : 1);
+            $categoryId = $_POST['category_id'] ?? null;
+            $customerName = trim($_POST['customer_name'] ?? '');
+            $contactNumber = trim($_POST['contact_number'] ?? '');
+            $duration = isset($_POST['duration']) ? (int)$_POST['duration'] : 1;
+            $imageData = $_POST['image'] ?? null;
+            $price = isset($_POST['price']) ? (float)$_POST['price'] : null;
 
             $contactNumber = preg_replace('/\D+/', '', $contactNumber);
 
-            // Validate duration
-            if ($durationDays <= 0) {
+            if ($duration <= 0) {
                 throw new Exception('Reservation duration must be at least 1 day.');
             }
 
-            if (!$itemId) {
-                throw new Exception('Item ID is required.');
+            if (!$categoryId) {
+                throw new Exception('Category ID is required.');
             }
             if (empty($customerName)) {
                 throw new Exception('Customer name is required.');
@@ -93,21 +87,45 @@ class ReservationController extends Controller {
             if (empty($contactNumber)) {
                 throw new Exception('Contact number is required.');
             }
-            if (!preg_match('/^\d{11}$/', $contactNumber)) {
-                throw new Exception('Contact number must contain exactly 11 digits.');
+            if (!$price) {
+                throw new Exception('Price selection is required.');
+            }
+            if (!$imageData) {
+                throw new Exception('Item photo is required.');
             }
 
             $db->beginTransaction();
 
-            $stmtCheck = $db->prepare('SELECT status FROM items WHERE id = ? FOR UPDATE');
-            $stmtCheck->execute([$itemId]);
-            $item = $stmtCheck->fetch();
-
-            if (!$item) {
-                throw new Exception('Item not found.');
+            $rackCategoryModel = new RackCategory();
+            $category = $rackCategoryModel->findById($categoryId);
+            if (!$category) {
+                throw new Exception('Category not found');
             }
-            if ($item['status'] !== 'available') {
-                throw new Exception('Item is already ' . $item['status'] . '.');
+
+            if ($category['stock_available'] <= 0) {
+                throw new Exception('No stock available for this rack.');
+            }
+
+            $stmtUpdateStock = $db->prepare('UPDATE rack_categories SET stock_available = stock_available - 1 WHERE id = ?');
+            $stmtUpdateStock->execute([$categoryId]);
+
+            $imageUrl = null;
+            if ($imageData) {
+                $upload_dir = __DIR__ . '/../../../public/uploads/';
+                if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+                
+                $imageData = str_replace('data:image/png;base64,', '', $imageData);
+                $imageData = str_replace('data:image/jpeg;base64,', '', $imageData);
+                $imageData = str_replace('data:image/jpg;base64,', '', $imageData);
+                $imageData = str_replace(' ', '+', $imageData);
+                $imageData = base64_decode($imageData);
+                
+                $file_name = 'reservation_' . time() . '_' . uniqid() . '.png';
+                $target_file = $upload_dir . $file_name;
+                
+                if (file_put_contents($target_file, $imageData)) {
+                    $imageUrl = '/thrift_pos/uploads/' . $file_name;
+                }
             }
 
             $stmtEnum = $db->query("SHOW COLUMNS FROM reservations LIKE 'status'")->fetch();
@@ -116,29 +134,25 @@ class ReservationController extends Controller {
                 $statusValue = 'pending';
             }
 
-            // Calculate expiration date
-            $expirationDate = date('Y-m-d H:i:s', strtotime('+' . $durationDays . ' days'));
+            $expirationDate = date('Y-m-d H:i:s', strtotime('+' . $duration . ' days'));
 
-            $stmt = $db->prepare('INSERT INTO reservations (item_id, customer_name, contact_number, notes, status, duration_days, expiration_date) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$itemId, $customerName, $contactNumber, $notes, $statusValue, $durationDays, $expirationDate]);
-
-            $stmtUpdate = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
-            $stmtUpdate->execute(['reserved', $itemId]);
+            $stmtRes = $db->prepare('INSERT INTO reservations (customer_name, contact_number, status, duration_days, expiration_date, image_url, category_id, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+            $stmtRes->execute([$customerName, $contactNumber, $statusValue, $duration, $expirationDate, $imageUrl, $categoryId, $price]);
 
             $db->commit();
 
-            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) || strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false || $json !== null;
+            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) || strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false;
             if ($isAjax) {
-                $this->json(['success' => true, 'message' => 'Item successfully reserved!']);
+                $this->json(['success' => true, 'message' => 'Item successfully reserved!', 'redirect' => '/thrift_pos/reservations']);
             }
 
-            $this->redirect('/pos');
+            $this->redirect('/reservations');
         } catch (Exception $e) {
             if ($db->inTransaction()) {
                 $db->rollBack();
             }
 
-            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) || strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false || isset($json);
+            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) || strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false;
             if ($isAjax) {
                 $this->json(['success' => false, 'message' => $e->getMessage()]);
             }
@@ -158,14 +172,14 @@ class ReservationController extends Controller {
         try {
             $db->beginTransaction();
 
-            $stmt = $db->prepare('SELECT item_id, status FROM reservations WHERE id = ?');
+            $stmt = $db->prepare('SELECT category_id, status FROM reservations WHERE id = ?');
             $stmt->execute([$id]);
             $res = $stmt->fetch();
 
             if ($res) {
-                if (in_array($res['status'], ['reserved', 'pending'], true)) {
-                    $stmtUpdate = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
-                    $stmtUpdate->execute(['available', $res['item_id']]);
+                if (in_array($res['status'], ['reserved', 'pending'], true) && $res['category_id']) {
+                    $stmtUpdate = $db->prepare('UPDATE rack_categories SET stock_available = stock_available + 1 WHERE id = ?');
+                    $stmtUpdate->execute([$res['category_id']]);
                 }
 
                 $stmtDel = $db->prepare('DELETE FROM reservations WHERE id = ?');
@@ -189,7 +203,7 @@ class ReservationController extends Controller {
         try {
             $db->beginTransaction();
 
-            $stmt = $db->prepare('SELECT r.*, i.status as item_status FROM reservations r JOIN items i ON r.item_id = i.id WHERE r.id = ?');
+            $stmt = $db->prepare('SELECT r.* FROM reservations r WHERE r.id = ?');
             $stmt->execute([$id]);
             $res = $stmt->fetch();
 
@@ -199,11 +213,6 @@ class ReservationController extends Controller {
 
             $stmtComplete = $db->prepare('UPDATE reservations SET status = ? WHERE id = ?');
             $stmtComplete->execute(['completed', $id]);
-
-            if ($res['item_status'] !== 'sold') {
-                $stmtItem = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
-                $stmtItem->execute(['available', $res['item_id']]);
-            }
 
             $db->commit();
         } catch (Exception $e) {
@@ -225,17 +234,14 @@ class ReservationController extends Controller {
             if (!$id) {
                 throw new Exception('Reservation ID is required.');
             }
-            if (!in_array($payment_method, ['cash', 'gcash'], true)) {
+            if (!in_array($payment_method, ['cash', 'gcash', 'paymaya', 'card', 'bdo', 'bpi', 'unionbank', 'maribank', 'other_bank'], true)) {
                 throw new Exception('Invalid payment method.');
             }
 
             $db->beginTransaction();
 
             $stmt = $db->prepare(
-                'SELECT r.*, i.price, i.tag_color, i.id as item_id 
-                FROM reservations r 
-                JOIN items i ON r.item_id = i.id 
-                WHERE r.id = ? AND r.status IN (\'reserved\', \'pending\')'
+                'SELECT r.* FROM reservations r WHERE r.id = ? AND r.status IN (\'reserved\', \'pending\')'
             );
             $stmt->execute([$id]);
             $res = $stmt->fetch();
@@ -244,13 +250,7 @@ class ReservationController extends Controller {
                 throw new Exception('Reservation not found or already processed.');
             }
 
-            $tag_key = 'discount_' . $res['tag_color'];
-            $stmtDisc = $db->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
-            $stmtDisc->execute([$tag_key]);
-            $discount_rate = (float) $stmtDisc->fetchColumn();
-
-            $discount_amount = $res['price'] * $discount_rate;
-            $final_price = $res['price'] - $discount_amount;
+            $final_price = $res['price'];
 
             $salesColumns = $db->query("SHOW COLUMNS FROM sales LIKE 'status'")->fetch();
             if ($salesColumns) {
@@ -260,13 +260,6 @@ class ReservationController extends Controller {
                 $stmtSale = $db->prepare('INSERT INTO sales (user_id, total_amount, payment_method) VALUES (?, ?, ?)');
                 $stmtSale->execute([$user_id, $final_price, $payment_method]);
             }
-            $sale_id = $db->lastInsertId();
-
-            $stmtSaleItem = $db->prepare('INSERT INTO sale_items (sale_id, item_id, price, discount, final_price) VALUES (?, ?, ?, ?, ?)');
-            $stmtSaleItem->execute([$sale_id, $res['item_id'], $res['price'], $discount_amount, $final_price]);
-
-            $stmtItem = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
-            $stmtItem->execute(['sold', $res['item_id']]);
 
             $stmtRes = $db->prepare('UPDATE reservations SET status = ? WHERE id = ?');
             $stmtRes->execute(['paid', $id]);
@@ -290,7 +283,7 @@ class ReservationController extends Controller {
             $this->redirect('/reservations');
         }
 
-        $stmt = $db->prepare('SELECT item_id, status FROM reservations WHERE id = ?');
+        $stmt = $db->prepare('SELECT category_id, status FROM reservations WHERE id = ?');
         $stmt->execute([$id]);
         $res = $stmt->fetch();
 
@@ -298,8 +291,10 @@ class ReservationController extends Controller {
             $db->beginTransaction();
             $stmtCancel = $db->prepare('UPDATE reservations SET status = ? WHERE id = ?');
             $stmtCancel->execute(['cancelled', $id]);
-            $stmtItem = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
-            $stmtItem->execute(['available', $res['item_id']]);
+            if ($res['category_id']) {
+                $stmtUpdate = $db->prepare('UPDATE rack_categories SET stock_available = stock_available + 1 WHERE id = ?');
+                $stmtUpdate->execute([$res['category_id']]);
+            }
             $db->commit();
         }
 

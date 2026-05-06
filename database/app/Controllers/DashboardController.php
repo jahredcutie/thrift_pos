@@ -11,8 +11,14 @@ class DashboardController extends Controller {
     public function index() {
         $db = getDB();
         
+        $selectedDate = $_GET['date'] ?? date('Y-m-d');
+        
         // Sales Stats
-        $salesToday = $db->query("SELECT SUM(total_amount) as total FROM sales WHERE DATE(created_at) = CURDATE()")->fetch();
+        $salesOnDate = $db->prepare("SELECT SUM(total_amount) as total FROM sales WHERE DATE(created_at) = ?")->fetch(PDO::FETCH_ASSOC);
+        $salesOnDateStmt = $db->prepare("SELECT SUM(total_amount) as total FROM sales WHERE DATE(created_at) = ?");
+        $salesOnDateStmt->execute([$selectedDate]);
+        $salesOnDate = $salesOnDateStmt->fetch();
+        
         $totalSales = $db->query("SELECT SUM(total_amount) as total FROM sales")->fetch();
         
         // Accurate Inventory Counts from the same source of truth
@@ -25,15 +31,18 @@ class DashboardController extends Controller {
             FROM items
         ")->fetch();
         
-        // Recent Sales
-        $recentSales = $db->query("SELECT s.*, u.username FROM sales s JOIN users u ON s.user_id = u.id ORDER BY s.created_at DESC LIMIT 5")->fetchAll();
+        // Recent Sales for selected date
+        $recentSalesStmt = $db->prepare("SELECT s.*, u.username FROM sales s JOIN users u ON s.user_id = u.id WHERE DATE(s.created_at) = ? ORDER BY s.created_at DESC");
+        $recentSalesStmt->execute([$selectedDate]);
+        $recentSales = $recentSalesStmt->fetchAll();
         
-        // Sales by Category
+        // Sales by Category (all time)
         $salesByCategory = $db->query("SELECT i.category, COUNT(si.id) as count FROM sale_items si JOIN items i ON si.item_id = i.id GROUP BY i.category")->fetchAll();
 
         $this->view('admin/dashboard', [
             'stats' => [
-                'today' => $salesToday['total'] ?? 0,
+                'selected_date' => $selectedDate,
+                'sales_on_date' => $salesOnDate['total'] ?? 0,
                 'total' => $totalSales['total'] ?? 0,
                 'items_sold' => $inventoryCounts['sold'] ?? 0,
                 'available' => $inventoryCounts['available'] ?? 0,

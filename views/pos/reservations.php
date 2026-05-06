@@ -39,10 +39,9 @@ $base_url = $base_url ?? '';
             <div class="bg-surface rounded-xl p-6 shadow-sm border border-border transition-all hover:border-accent/30 relative group/card">
                 <div class="flex items-start justify-between mb-6">
                     <div class="flex items-center gap-4">
-                        <img src="<?php echo $res['image_url']; ?>" class="w-14 h-14 rounded-lg object-cover border border-border">
                         <div>
                             <h3 class="font-bold text-primary text-sm"><?php echo $res['item_name']; ?></h3>
-                            <p class="text-xs text-accent font-bold">₱<?php echo number_format($res['price'], 2); ?></p>
+                            <p class="text-xs text-accent font-bold">₱<?php echo number_format($res['price'] ?? 0, 2); ?></p>
                         </div>
                     </div>
                     
@@ -54,7 +53,6 @@ $base_url = $base_url ?? '';
                                 ($res['status'] == 'expired' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-red-50 text-red-600 border border-red-100'))); 
                         ?>"><?php echo $res['status']; ?></span>
                         
-                        <!-- Delete Reservation -->
                         <?php if (in_array($res['status'], ['reserved', 'pending'])): ?>
                         <form action="<?php echo $base_url; ?>/reservations/delete" method="POST" class="opacity-0 group-hover/card:opacity-100 transition-opacity z-10" onsubmit="return confirm('Are you sure you want to delete this reservation?')">
                             <input type="hidden" name="id" value="<?php echo $res['id']; ?>">
@@ -65,6 +63,12 @@ $base_url = $base_url ?? '';
                         <?php endif; ?>
                     </div>
                 </div>
+
+                <?php if (!empty($res['image_url'])): ?>
+                <div class="mb-4">
+                    <img src="<?php echo htmlspecialchars($res['image_url']); ?>" class="w-full h-32 object-cover rounded-lg border border-border" alt="Reservation Image">
+                </div>
+                <?php endif; ?>
                 
                 <div class="bg-background rounded-lg p-4 mb-6 border border-border space-y-3">
                     <div>
@@ -119,7 +123,7 @@ $base_url = $base_url ?? '';
 
                 <div class="space-y-2">
                     <?php if ($res['status'] == 'reserved' || $res['status'] == 'pending'): ?>
-                    <button @click="selectedReservation = <?php echo htmlspecialchars(json_encode($res)); ?>; showPaymentModal = true; paymentMethod = 'cash'; selectedEpaymentMethod = null; qrCodeUrl = null; checkoutUrl = null; paymentStatus = 'idle'; paymentResult = null; paymentIntentId = null; sourceId = null; transactionId = null; cardHolderName = ''; cardNumber = ''; cardCvv = ''; cardExpiry = '';" 
+                    <button @click="selectedReservation = <?php echo htmlspecialchars(json_encode($res)); ?>; showPaymentModal = true; paymentMethod = 'cash'; selectedEpaymentCategory = 'ewallet'; selectedEpaymentMethod = null; qrCodeUrl = null; checkoutUrl = null; paymentStatus = 'idle'; paymentResult = null; paymentIntentId = null; sourceId = null; transactionId = null; cardHolderName = ''; cardNumber = ''; cardCvv = ''; cardExpiry = '';" 
                         class="w-full bg-accent text-white py-2.5 rounded-lg font-bold text-xs hover:bg-accent-hover transition-all shadow-sm">
                         Process Payment
                     </button>
@@ -155,7 +159,7 @@ $base_url = $base_url ?? '';
                                 class="w-full py-2.5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all <?php 
                                     echo ($res['status'] == 'completed' || $res['status'] == 'cancelled' || $res['status'] == 'expired')
                                     ? 'bg-background text-secondary/20 border border-border cursor-not-allowed'
-                                    : 'bg-background text-red-600 border border-red-100 hover:bg-red-600 hover:text-white';
+                                    : 'bg-background text-red-600 border border-red-100 hover:bg-red-600 hover:text-white'; 
                                 ?>">
                                 Cancel
                             </button>
@@ -196,7 +200,7 @@ $base_url = $base_url ?? '';
                         </div>
                         <div class="flex justify-between items-center py-2">
                             <span class="text-secondary text-xs font-medium">Final Amount</span>
-                            <span class="text-xl font-bold text-primary">₱<span x-text="selectedReservation ? getDiscountedPrice(parseFloat(selectedReservation.price), selectedReservation.tag_color).toLocaleString(undefined, {minimumFractionDigits: 2}) : '0.00'"></span></span>
+                            <span class="text-xl font-bold text-primary">₱<span x-text="selectedReservation ? parseFloat(selectedReservation.price).toLocaleString(undefined, {minimumFractionDigits: 2}) : '0.00'"></span></span>
                         </div>
                     </div>
 
@@ -256,57 +260,40 @@ $base_url = $base_url ?? '';
                             <span>Selected channel</span>
                             <span x-text="selectedEpaymentMethod || 'None selected'"></span>
                         </div>
-                        <div x-show="paymentResult" class="space-y-3">
-                            <template x-if="selectedEpaymentMethod === 'card'">
-                                <div class="space-y-3">
-                                    <div>
-                                        <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Cardholder Name</label>
-                                        <input type="text" x-model="cardHolderName" placeholder="Full Name" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Card Number</label>
-                                        <input type="text" x-model="cardNumber" @input="formatCardNumber($event)" placeholder="1234 5678 9012 3456" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">CVV</label>
-                                            <input type="text" x-model="cardCvv" placeholder="123" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
-                                        </div>
-                                        <div>
-                                            <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Expiry Date</label>
-                                            <input type="text" x-model="cardExpiry" @input="formatCardExpiry($event)" placeholder="MM/YY" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
-                                        </div>
-                                    </div>
+
+                        <template x-if="selectedEpaymentMethod === 'card'">
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Cardholder Name</label>
+                                    <input type="text" x-model="cardHolderName" placeholder="Full Name" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
                                 </div>
-                            </template>
-                            <template x-if="qrCodeUrl && selectedEpaymentMethod !== 'card'">
-                                <div class="text-center">
-                                    <img :src="qrCodeUrl" class="mx-auto w-40 h-40" alt="Payment QR Code">
-                                    <p class="text-[10px] text-secondary mt-2">Scan to pay</p>
+                                <div>
+                                    <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Card Number</label>
+                                    <input type="text" x-model="cardNumber" @input="formatCardNumber($event)" placeholder="1234 5678 9012 3456" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
                                 </div>
-                            </template>
-                            <template x-if="checkoutUrl && !qrCodeUrl && selectedEpaymentMethod !== 'card'">
-                                <a :href="checkoutUrl" target="_blank" class="inline-flex items-center justify-center w-full bg-black text-white py-3 rounded-lg font-bold text-sm">Continue to Payment</a>
-                            </template>
-                        </div>
-                        <template x-if="selectedEpaymentMethod === 'maribank' && !qrCodeUrl">
-                            <div class="rounded-2xl border border-border p-4 bg-surface space-y-3">
-                                <div class="flex items-center justify-between">
+                                <div class="grid grid-cols-2 gap-3">
                                     <div>
-                                        <p class="text-sm font-bold text-primary">MariBank QR Preview</p>
-                                        <p class="text-[10px] text-secondary">Scan this QR with the MariBank app once you create the payment.</p>
+                                        <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">CVV</label>
+                                        <input type="text" x-model="cardCvv" placeholder="123" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
                                     </div>
-                                </div>
-                                <img :src="getMaribankQrPreview()" class="mx-auto w-40 h-40" alt="MariBank QR Preview">
-                                <div class="text-center text-[11px] text-secondary">
-                                    <p class="font-bold text-primary" x-text="maribankAccountName"></p>
-                                    <p x-text="'Account No: ' + maribankAccountNumber"></p>
+                                    <div>
+                                        <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Expiry Date</label>
+                                        <input type="text" x-model="cardExpiry" @input="formatCardExpiry($event)" placeholder="MM/YY" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
+                                    </div>
                                 </div>
                             </div>
                         </template>
+
+                        <template x-if="selectedEpaymentMethod && selectedEpaymentMethod !== 'card'">
+                            <div class="text-center">
+                                <img :src="qrCodeUrl || getBankQrPreview()" class="mx-auto w-40 h-40" alt="Payment QR Code">
+                                <p class="text-[10px] text-secondary mt-2" x-text="qrCodeUrl ? 'Scan this payment QR code' : 'Preview QR code for the selected channel'"></p>
+                            </div>
+                        </template>
+
                         <div class="space-y-2">
                             <div class="text-[10px] text-secondary uppercase tracking-widest">Status</div>
-                            <div class="text-sm font-bold" x-text="paymentResult || 'Waiting for payment creation' "></div>
+                            <div class="text-sm font-bold" x-text="paymentResult || 'Waiting for payment creation'"></div>
                         </div>
                         <div x-show="paymentResult === 'pending'" class="flex gap-2">
                             <button type="button" @click="markReservationAsPaid()" class="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold text-sm hover:bg-green-700 transition-all">Mark as Paid</button>
@@ -346,7 +333,7 @@ function reservationsApp() {
         cardHolderName: '',
         maribankAccountName: 'JAHRED CUASITO',
         maribankAccountNumber: '1940 0576 833',
-        maribankQrImage: '<?php echo $base_url; ?>/assets/images/maribank-qr.png',
+        maribankQrImage: '<?php echo $base_url; ?>/assets/images/qrmaribank.png?v=<?php echo time(); ?>',
         cardNumber: '',
         cardCvv: '',
         cardExpiry: '',
@@ -372,6 +359,16 @@ function reservationsApp() {
                 return null;
             }
             return this.maribankQrImage;
+        },
+
+        getBankQrPreview() {
+            if (this.selectedEpaymentMethod === 'maribank') {
+                return this.maribankQrImage;
+            }
+            if (!this.selectedEpaymentMethod) {
+                return null;
+            }
+            return 'https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=' + encodeURIComponent('Pay with ' + this.selectedEpaymentMethod + ' - ₱' + parseFloat(this.selectedReservation?.price || 0).toFixed(2));
         },
 
         formatCardNumber(event) {
@@ -436,7 +433,7 @@ function reservationsApp() {
         },
         initiateReservationEpayment() {
             this.paymentLoading = true;
-            const amount = this.getDiscountedPrice(parseFloat(this.selectedReservation.price), this.selectedReservation.tag_color);
+            const amount = parseFloat(this.selectedReservation.price);
             const payload = {
                 module_type: 'reservation',
                 module_id: this.selectedReservation.id,
@@ -458,8 +455,10 @@ function reservationsApp() {
                     this.checkoutUrl = data.checkout_url || null;
                     this.qrCodeUrl = data.qr_data;
                     this.paymentResult = 'pending';
+                    this.paymentStatus = 'pending';
                     this.showToast('E-Payment created. Staff will process manually.', 'success');
                 } else {
+                    this.paymentStatus = 'failed';
                     this.showToast(data.message || 'Failed to create payment.', 'error');
                 }
             })

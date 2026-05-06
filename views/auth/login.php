@@ -3,7 +3,7 @@
 <div class="min-h-screen flex items-center justify-center px-4 bg-background">
     <div class="max-w-md w-full bg-surface rounded-xl shadow-sm overflow-hidden p-10 border border-border">
         <div class="text-center mb-10">
-            <h1 class="text-3xl font-bold text-primary mb-2 tracking-tight">ThriftPOS</h1>
+            <h1 class="text-3xl font-bold text-primary mb-2 tracking-tight">Dehlia's Thrift Store</h1>
             <p class="text-sm text-secondary font-medium">Sign in to your account</p>
         </div>
 

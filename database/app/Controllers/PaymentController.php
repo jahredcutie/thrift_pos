@@ -52,7 +52,6 @@ class PaymentController extends Controller {
                 $saleId = $db->lastInsertId();
 
                 $stmtItem = $db->prepare('INSERT INTO sale_items (sale_id, item_id, price, discount, final_price) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE id=id');
-                $stmtUpdateItem = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
 
                 foreach ($items as $item) {
                     $stmtItem->execute([
@@ -62,7 +61,6 @@ class PaymentController extends Controller {
                         $item['discount'],
                         $item['final_price']
                     ]);
-                    $stmtUpdateItem->execute(['sold', $item['id']]);
                 }
 
                 $moduleId = $saleId;
@@ -72,7 +70,7 @@ class PaymentController extends Controller {
                     throw new Exception('Reservation ID is required.');
                 }
 
-                $stmtReservation = $db->prepare('SELECT r.*, i.id as item_id FROM reservations r JOIN items i ON r.item_id = i.id WHERE r.id = ? FOR UPDATE');
+                $stmtReservation = $db->prepare('SELECT r.*, i.id as item_id FROM reservations r LEFT JOIN items i ON r.item_id = i.id WHERE r.id = ? FOR UPDATE');
                 $stmtReservation->execute([$moduleId]);
                 $reservation = $stmtReservation->fetch();
                 if (!$reservation) {
@@ -82,7 +80,7 @@ class PaymentController extends Controller {
                     throw new Exception('Reservation is not available for payment.');
                 }
 
-                $itemId = (int)$reservation['item_id'];
+                $itemId = isset($reservation['item_id']) ? (int)$reservation['item_id'] : null;
                 $stmtUpdateReservation = $db->prepare('UPDATE reservations SET status = ? WHERE id = ?');
                 $stmtUpdateReservation->execute(['pending', $moduleId]);
             }
@@ -110,10 +108,11 @@ class PaymentController extends Controller {
             if ($paymentChannel === 'card') {
                 // For card, no QR, just form
             } else {
-                if ($paymentChannel === 'maribank') {
+                // All bank transfer methods use qrmaribank.png
+                if (in_array($paymentChannel, ['maribank', 'bdo', 'bpi', 'unionbank', 'other_bank'], true)) {
                     $scriptName = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
                     $baseUrlPath = $scriptName === '/' ? '' : $scriptName;
-                    $qrData = $baseUrlPath . '/assets/images/maribank-qr.png';
+                    $qrData = $baseUrlPath . '/assets/images/qrmaribank.png';
                 } else {
                     $qrText = "Payment for {$moduleType} - Amount: {$amount} PHP - Channel: {$paymentChannel}";
                     $qrData = "https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=" . urlencode($qrText);
@@ -166,6 +165,17 @@ class PaymentController extends Controller {
             if ($transaction['module_type'] === 'checkout') {
                 $stmt = $db->prepare('UPDATE sales SET status = ?, payment_method = ? WHERE id = ?');
                 $stmt->execute(['paid', $transaction['payment_method'], $transaction['reference_id']]);
+
+                $stmtItems = $db->prepare('SELECT item_id FROM sale_items WHERE sale_id = ?');
+                $stmtItems->execute([$transaction['reference_id']]);
+                $saleItems = $stmtItems->fetchAll();
+
+                $stmtItem = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
+                foreach ($saleItems as $saleItem) {
+                    if (!empty($saleItem['item_id'])) {
+                        $stmtItem->execute(['sold', $saleItem['item_id']]);
+                    }
+                }
             } elseif ($transaction['module_type'] === 'reservation') {
                 $stmtRes = $db->prepare('UPDATE reservations SET status = ? WHERE id = ?');
                 $stmtRes->execute(['paid', $transaction['reference_id']]);

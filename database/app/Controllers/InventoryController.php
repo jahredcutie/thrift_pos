@@ -12,7 +12,12 @@ class InventoryController extends Controller {
         $itemModel = new Item();
         $items = $itemModel->getAll();
         $categories = $itemModel->getCategories();
-        $this->view('admin/inventory', ['items' => $items, 'categories' => $categories]);
+        
+        require_once __DIR__ . '/../Models/RackCategory.php';
+        $rackCategoryModel = new RackCategory();
+        $rackCategories = $rackCategoryModel->getAll();
+        
+        $this->view('admin/inventory', ['items' => $items, 'categories' => $categories, 'rackCategories' => $rackCategories]);
     }
 
     public function add() {
@@ -32,10 +37,11 @@ class InventoryController extends Controller {
         }
 
         $db = getDB();
-        $stmt = $db->prepare("INSERT INTO items (name, category, price, tag_color, image_url, status) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt = $db->prepare("INSERT INTO items (name, category, gender, price, tag_color, image_url, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $_POST['name'],
             $_POST['category'],
+            $_POST['gender'],
             $_POST['price'],
             $_POST['tag_color'],
             $image_url,
@@ -51,6 +57,7 @@ class InventoryController extends Controller {
         $params = [
             $_POST['name'],
             $_POST['category'],
+            $_POST['gender'],
             $_POST['price'],
             $_POST['tag_color'],
             $_POST['status']
@@ -72,7 +79,7 @@ class InventoryController extends Controller {
         }
 
         $params[] = $_POST['id'];
-        $stmt = $db->prepare("UPDATE items SET name = ?, category = ?, price = ?, tag_color = ?, status = ? $image_sql WHERE id = ?");
+        $stmt = $db->prepare("UPDATE items SET name = ?, category = ?, gender = ?, price = ?, tag_color = ?, status = ? $image_sql WHERE id = ?");
         $stmt->execute($params);
         $this->redirect('/inventory');
     }
@@ -82,5 +89,84 @@ class InventoryController extends Controller {
         $stmt = $db->prepare("DELETE FROM items WHERE id = ?");
         $stmt->execute([$_POST['id']]);
         $this->redirect('/inventory');
+    }
+
+    public function addBulk() {
+        $category = $_POST['category'];
+        $gender = $_POST['gender'];
+        $quantity = (int)$_POST['quantity'];
+        $tag_color = $_POST['tag_color'] ?? 'yellow';
+        $batch_name = $_POST['batch_name'] ?? '';
+        $price = isset($_POST['price']) ? (float)$_POST['price'] : null;
+
+        if ($quantity <= 0 || $quantity > 1000) {
+            $this->redirect('/inventory');
+            return;
+        }
+
+        $db = getDB();
+        
+        // Get rack category
+        require_once __DIR__ . '/../Models/RackCategory.php';
+        $rackCategoryModel = new RackCategory();
+        $cat = $rackCategoryModel->findByName($category);
+        
+        if (!$price && $cat) {
+            $price = $cat['price'];
+        }
+
+        $itemModel = new Item();
+        
+        for ($i = 0; $i < $quantity; $i++) {
+            // Generate unique name
+            $name = $this->generateItemName($category, $gender, $batch_name, $i);
+            
+            $stmt = $db->prepare("INSERT INTO items (name, category, gender, price, tag_color, status, batch_name) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([
+                $name,
+                $category,
+                $gender,
+                $price,
+                $tag_color,
+                'available',
+                $batch_name ?: null
+            ]);
+        }
+        
+        // Update rack stock if we found the category
+        if ($cat) {
+            $stmtUpdateStock = $db->prepare('UPDATE rack_categories SET stock_total = stock_total + ?, stock_available = stock_available + ? WHERE id = ?');
+            $stmtUpdateStock->execute([$quantity, $quantity, $cat['id']]);
+        }
+        
+        $this->redirect('/inventory');
+    }
+
+    private function generateItemName($category, $gender, $batch_name = '', $index = 0) {
+        $itemModel = new Item();
+        $names = $itemModel->getGeneratedNamesForGender($gender);
+        
+        if (isset($names[$category])) {
+            $categoryNames = $names[$category];
+            $name = $categoryNames[array_rand($categoryNames)];
+        } else {
+            $name = ucfirst($category) . ' Item';
+        }
+        
+        if ($batch_name) {
+            $name .= ' (' . $batch_name . ')';
+        }
+        
+        // Ensure uniqueness
+        $db = getDB();
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM items WHERE name = ?");
+        $stmt->execute([$name]);
+        $count = $stmt->fetch()['count'];
+        
+        if ($count > 0) {
+            $name .= ' ' . ($count + 1);
+        }
+        
+        return $name;
     }
 }

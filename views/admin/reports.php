@@ -14,10 +14,9 @@ function formatPaymentLabel($method) {
     return $map[$method] ?? 'Paid via ' . ucfirst(str_replace('_', ' ', $method));
 }
 $dailySales = $dailySales ?? [];
-$staffPerformance = $staffPerformance ?? [];
-$inventoryStatus = $inventoryStatus ?? [];
 $allSales = $allSales ?? [];
 $showAllOrders = $showAllOrders ?? false;
+$selectedDate = $selectedDate ?? date('Y-m-d');
 ?>
 <?php require_once __DIR__ . '/../layouts/header.php'; ?>
 
@@ -27,10 +26,52 @@ $showAllOrders = $showAllOrders ?? false;
     <main :class="sidebarOpen ? 'ml-64' : 'ml-20 md:ml-64'" class="flex-1 bg-background min-h-screen p-4 md:p-8 transition-soft">
         <header class="mb-6 md:mb-10">
             <h1 class="text-xl md:text-2xl font-extrabold text-primary tracking-tight">Analytics & Reports</h1>
-           
         </header>
 
         <div class="grid grid-cols-1 gap-6 md:gap-8">
+            <!-- Date Filter -->
+            <div class="bg-surface rounded-xl p-4 md:p-6 shadow-sm border border-border">
+                <div class="flex flex-col md:flex-row gap-4 items-start md:items-center">
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Date Filter</label>
+                        <div class="flex gap-3">
+                            <div class="relative flex-1">
+                                <i class="fa-solid fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-secondary/40 pointer-events-none"></i>
+                                <input type="date" x-model="selectedDate" @change="window.location.href = '<?php echo $base_url; ?>/reports?date=' + this.selectedDate"
+                                    class="w-full pl-10 pr-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all text-sm">
+                            </div>
+                            <div class="flex gap-2">
+                                <button @click="selectedDate = '<?php echo date('Y-m-d', strtotime('-1 day')); ?>'; window.location.href='<?php echo $base_url; ?>/reports?date=' + '<?php echo date('Y-m-d', strtotime('-1 day')); ?>'"
+                                    class="px-4 py-2.5 bg-background border border-border hover:border-accent/30 transition-all rounded-lg text-xs font-bold">
+                                    Yesterday
+                                </button>
+                                <button @click="selectedDate = '<?php echo date('Y-m-d'); ?>'; window.location.href='<?php echo $base_url; ?>/reports?date=' + '<?php echo date('Y-m-d'); ?>'"
+                                    class="px-4 py-2.5 bg-accent text-white hover:bg-accent-hover transition-all rounded-lg text-xs font-bold">
+                                    Today
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Daily Sales Summary -->
+            <div class="bg-surface rounded-xl p-4 md:p-6 shadow-sm border border-border">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-primary">Daily Sales Summary</h3>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-background rounded-lg p-4 border border-border">
+                        <p class="text-xs font-bold uppercase tracking-widest text-secondary mb-1">Total Earnings</p>
+                        <p class="text-2xl font-bold text-primary">₱<?php echo number_format($dailyEarnings ?? 0, 2); ?></p>
+                    </div>
+                    <div class="bg-background rounded-lg p-4 border border-border">
+                        <p class="text-xs font-bold uppercase tracking-widest text-secondary mb-1">Number of Transactions</p>
+                        <p class="text-2xl font-bold text-primary"><?php echo count($dailyTransactions ?? []); ?></p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Sales Trends -->
             <div class="bg-surface rounded-xl p-4 md:p-6 shadow-sm border border-border">
                 <h3 class="text-lg font-bold text-primary mb-4 md:mb-6">Recent Sales Trends (Daily)</h3>
@@ -46,116 +87,6 @@ $showAllOrders = $showAllOrders ?? false;
                         </div>
                     </div>
                     <?php endforeach; ?>
-                </div>
-            </div>
-
-            <!-- Staff Performance -->
-            <div class="bg-surface rounded-xl p-4 md:p-6 shadow-sm border border-border">
-                <h3 class="text-lg font-bold text-primary mb-4 md:mb-6">Staff Performance</h3>
-                <!-- Desktop Table -->
-                <div class="hidden md:block overflow-x-auto">
-                    <table class="w-full text-left">
-                        <thead>
-                            <tr class="text-[10px] font-bold text-secondary uppercase tracking-widest border-b border-border">
-                                <th class="pb-4">Staff Member</th>
-                                <th class="pb-4">Transactions</th>
-                                <th class="pb-4 text-right">Revenue</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-border/50">
-                            <?php foreach ($staffPerformance as $staff): ?>
-                            <tr>
-                                <td class="py-4 text-sm font-bold text-primary capitalize"><?php echo $staff['username']; ?></td>
-                                <td class="py-4 text-xs text-secondary font-medium"><?php echo $staff['sales_count']; ?></td>
-                                <td class="py-4 text-right text-sm font-bold text-accent">₱<?php echo number_format($staff['total_revenue'], 2); ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <!-- Mobile Cards -->
-                <div class="md:hidden space-y-3">
-                    <?php foreach ($staffPerformance as $staff): ?>
-                    <div class="p-4 bg-background rounded-lg border border-border flex items-center justify-between">
-                        <div>
-                            <p class="text-sm font-bold text-primary capitalize"><?php echo $staff['username']; ?></p>
-                            <p class="text-xs text-secondary font-medium"><?php echo $staff['sales_count']; ?> transactions</p>
-                        </div>
-                        <p class="text-sm font-bold text-accent">₱<?php echo number_format($staff['total_revenue'], 2); ?></p>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-
-            <!-- Inventory Breakdown -->
-            <div class="bg-surface rounded-xl p-4 md:p-6 shadow-sm border border-border">
-                <h3 class="text-lg font-bold text-primary mb-4 md:mb-6">Inventory Status Breakdown</h3>
-                <div class="grid grid-cols-3 gap-2 md:gap-4">
-                    <!-- Available -->
-                    <div class="text-center p-3 md:p-5 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800">
-                        <div class="flex justify-center mb-1 md:mb-2">
-                            <div class="w-8 h-8 md:w-10 md:h-10 bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400 rounded-lg flex items-center justify-center">
-                                <i class="fa-solid fa-boxes-stacked text-sm md:text-lg"></i>
-                            </div>
-                        </div>
-                        <p class="text-[8px] md:text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-widest mb-1 md:mb-2">Available</p>
-                        <h4 class="text-lg md:text-xl font-bold text-green-700 dark:text-green-300">
-                            <?php
-                            $availableCount = 0;
-                            foreach ($inventoryStatus as $status) {
-                                if (strtolower($status['status']) === 'available') {
-                                    $availableCount = $status['count'];
-                                    break;
-                                }
-                            }
-                            echo $availableCount;
-                            ?>
-                        </h4>
-                    </div>
-
-                    <!-- Sold -->
-                    <div class="text-center p-3 md:p-5 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
-                        <div class="flex justify-center mb-1 md:mb-2">
-                            <div class="w-8 h-8 md:w-10 md:h-10 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 rounded-lg flex items-center justify-center">
-                                <i class="fa-solid fa-cart-shopping text-sm md:text-lg"></i>
-                            </div>
-                        </div>
-                        <p class="text-[8px] md:text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-1 md:mb-2">Sold</p>
-                        <h4 class="text-lg md:text-xl font-bold text-blue-700 dark:text-blue-300">
-                            <?php
-                            $soldCount = 0;
-                            foreach ($inventoryStatus as $status) {
-                                if (strtolower($status['status']) === 'sold') {
-                                    $soldCount = $status['count'];
-                                    break;
-                                }
-                            }
-                            echo $soldCount;
-                            ?>
-                        </h4>
-                    </div>
-
-                    <!-- Reserved -->
-                    <div class="text-center p-3 md:p-5 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
-                        <div class="flex justify-center mb-1 md:mb-2">
-                            <div class="w-8 h-8 md:w-10 md:h-10 bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-400 rounded-lg flex items-center justify-center">
-                                <i class="fa-solid fa-clock text-sm md:text-lg"></i>
-                            </div>
-                        </div>
-                        <p class="text-[8px] md:text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-1 md:mb-2">Reserved</p>
-                        <h4 class="text-lg md:text-xl font-bold text-orange-700 dark:text-orange-300">
-                            <?php
-                            $reservedCount = 0;
-                            foreach ($inventoryStatus as $status) {
-                                if (strtolower($status['status']) === 'reserved') {
-                                    $reservedCount = $status['count'];
-                                    break;
-                                }
-                            }
-                            echo $reservedCount;
-                            ?>
-                        </h4>
-                    </div>
                 </div>
             </div>
         </div>
@@ -188,7 +119,7 @@ $showAllOrders = $showAllOrders ?? false;
                             <p class="text-sm font-bold text-primary">₱<?php echo number_format($sale['total_amount'], 2); ?></p>
                         </div>
                     </div>
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between gap-3">
                         <?php if (!empty($sale['payment_method'])): ?>
                         <span class="border border-accent/30 text-accent px-3 py-1 rounded-full text-[10px] font-bold uppercase flex-shrink-0"><?php echo formatPaymentLabel($sale['payment_method']); ?></span>
                         <?php endif; ?>
@@ -196,6 +127,32 @@ $showAllOrders = $showAllOrders ?? false;
                             'bg-green-100 text-green-700': '<?php echo $sale['status']; ?>' === 'paid',
                             'bg-yellow-100 text-yellow-700': '<?php echo $sale['status']; ?>' === 'pending'
                         }" class="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase flex-shrink-0"><?php echo $sale['status']; ?></span>
+                        <button @click="selectedOrder = selectedOrder === <?php echo $sale['id']; ?> ? null : <?php echo $sale['id']; ?>" class="text-xs font-bold text-accent hover:text-accent-hover transition-soft">
+                            <i class="fa-solid fa-eye mr-1"></i>View Item
+                        </button>
+                    </div>
+                    <?php 
+                    $db = getDB();
+                    $saleItems = $db->prepare("SELECT i.*, si.price FROM sale_items si JOIN items i ON si.item_id = i.id WHERE si.sale_id = ?");
+                    $saleItems->execute([$sale['id']]);
+                    $saleItems = $saleItems->fetchAll();
+                    ?>
+                    <div x-show="selectedOrder === <?php echo $sale['id']; ?>" x-cloak class="pt-3 border-t border-border space-y-3">
+                        <?php foreach ($saleItems as $item): ?>
+                        <div class="flex flex-col md:flex-row gap-3 items-start md:items-center">
+                            <div class="flex-1">
+                                <p class="text-sm font-bold text-primary"><?php echo $item['name']; ?></p>
+                                <p class="text-xs text-secondary"><?php echo $item['category']; ?></p>
+                            </div>
+                            <p class="text-sm font-bold text-primary">₱<?php echo number_format($item['price'], 2); ?></p>
+                        </div>
+                        <?php endforeach; ?>
+                        <?php if (!empty($sale['image_url'])): ?>
+                        <div class="mt-3">
+                            <p class="text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Proof Photo</p>
+                            <img src="<?php echo $sale['image_url']; ?>" class="w-full h-32 object-cover rounded-lg border border-border" alt="Proof Photo">
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <?php endforeach; ?>
@@ -210,6 +167,8 @@ function reportsApp() {
         darkMode: localStorage.getItem('darkMode') === 'true', 
         showAllOrders: false,
         sidebarOpen: localStorage.getItem('sidebarOpen') === 'true',
+        selectedDate: '<?php echo $selectedDate; ?>',
+        selectedOrder: null,
         init() {
             this.$watch('darkMode', val => localStorage.setItem('darkMode', val));
             this.$watch('sidebarOpen', val => localStorage.setItem('sidebarOpen', val));

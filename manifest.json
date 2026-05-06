@@ -1,6 +1,6 @@
 {
-  "name": "ThriftPOS",
-  "short_name": "ThriftPOS",
+  "name": "Dehlia's Thrift Store",
+  "short_name": "Dehlia's Thrift Store",
   "description": "A modern Point of Sale system for thrift stores.",
   "start_url": "/thrift_pos/",
   "scope": "/thrift_pos/",

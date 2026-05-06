@@ -1,4 +1,4 @@
-const CACHE_NAME = 'thriftpos-v1';
+const CACHE_NAME = 'dehlias-thrift-shop-v1';
 const ASSETS_TO_CACHE = [
   '/thrift_pos/',
   '/thrift_pos/login',

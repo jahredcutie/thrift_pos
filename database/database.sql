@@ -16,10 +16,19 @@ CREATE TABLE IF NOT EXISTS items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     category VARCHAR(50) NOT NULL,
+    gender ENUM('women', 'men', 'unisex') NOT NULL DEFAULT 'unisex',
     price DECIMAL(10, 2) NOT NULL,
     tag_color ENUM('red', 'blue', 'green', 'yellow') NOT NULL,
     image_url VARCHAR(255),
     status ENUM('available', 'sold', 'reserved') DEFAULT 'available',
+    batch_name VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    price DECIMAL(10, 2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -31,6 +40,7 @@ CREATE TABLE IF NOT EXISTS sales (
     status ENUM('paid', 'pending', 'cancelled') NOT NULL DEFAULT 'paid',
     cash_received DECIMAL(10, 2),
     `change` DECIMAL(10, 2),
+    image_url VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -55,6 +65,7 @@ CREATE TABLE IF NOT EXISTS reservations (
     duration_days INT DEFAULT 1,
     expiration_date DATETIME,
     status ENUM('reserved', 'pending', 'paid', 'completed', 'cancelled', 'expired') NOT NULL DEFAULT 'reserved',
+    image_url VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (item_id) REFERENCES items(id)
 );
@@ -71,3 +82,32 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 ('discount_blue', '0.30'),
 ('discount_green', '0.20'),
 ('discount_yellow', '0.00');
+
+CREATE TABLE IF NOT EXISTS rack_categories (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    price DECIMAL(10, 2) NOT NULL,
+    gender ENUM('women', 'men', 'unisex') NOT NULL DEFAULT 'unisex',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Seed rack categories with fixed prices
+INSERT INTO rack_categories (name, price, gender) VALUES 
+('Printed Shirts', 150.00, 'unisex'),
+('Branded Shirts', 300.00, 'unisex'),
+('Pants', 250.00, 'unisex'),
+('Jackets', 400.00, 'unisex'),
+('Dresses', 350.00, 'women'),
+('Skirts', 200.00, 'women'),
+('Tops', 120.00, 'unisex'),
+('Bottoms', 180.00, 'unisex'),
+('Outerwear', 450.00, 'unisex'),
+('Footwear', 350.00, 'unisex'),
+('Accessories', 100.00, 'unisex');
+
+-- Seed categories for rack-based pricing
+INSERT INTO categories (name, price) VALUES 
+('Printed Shirts', 150.00),
+('Branded Shirts', 300.00),
+('Pants', 250.00),
+('Jackets', 400.00);

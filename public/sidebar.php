@@ -6,7 +6,7 @@
                 <div class="w-10 h-10 bg-black dark:bg-white rounded-xl flex items-center justify-center">
                     <i class="fa-solid fa-store text-white dark:text-black text-xl"></i>
                 </div>
-                <h1 class="hidden md:block text-2xl font-black text-gray-900 dark:text-white tracking-tight">ThriftPOS</h1>
+                <h1 class="hidden md:block text-2xl font-black text-gray-900 dark:text-white tracking-tight">Dehlia's Thrift Store</h1>
             </div>
         </div>
 

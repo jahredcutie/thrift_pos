@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../Models/Item.php';
+require_once __DIR__ . '/../Models/RackCategory.php';
 
 class PosController extends Controller {
     public function __construct() {
@@ -44,21 +45,37 @@ class PosController extends Controller {
     }
 
     public function index() {
-        $itemModel = new Item();
-        $categories = $itemModel->getCategories();
+        $rackCategoryModel = new RackCategory();
+        $categories = $rackCategoryModel->getAll();
         $this->view('pos/index', ['categories' => $categories]);
     }
 
     public function getItems() {
         $this->expireReservations();
 
+        $section = $_GET['section'] ?? null;
         $category = $_GET['category'] ?? null;
         $search = $_GET['search'] ?? null;
         
         $itemModel = new Item();
-        $items = $itemModel->getAll($category, $search);
+        $items = $itemModel->getAll($section, $category, $search);
         
         $this->json($items);
+    }
+
+    public function getRackCategories() {
+        $section = $_GET['section'] ?? null;
+        
+        $rackCategoryModel = new RackCategory();
+        if ($section === 'women') {
+            $categories = $rackCategoryModel->getByGender('women');
+        } elseif ($section === 'men') {
+            $categories = $rackCategoryModel->getByGender('men');
+        } else {
+            $categories = $rackCategoryModel->getAll();
+        }
+        
+        $this->json($categories);
     }
 
     public function checkout() {
@@ -72,6 +89,7 @@ class PosController extends Controller {
         $paymentMethod = $data['payment_method'];
         $cashReceived = isset($data['cash_received']) ? (float) $data['cash_received'] : null;
         $change = isset($data['change']) ? (float) $data['change'] : null;
+        $imageData = isset($data['image']) ? $data['image'] : null;
 
         if (!is_array($items) || count($items) === 0) {
             $this->json(['success' => false, 'message' => 'Cart cannot be empty.']);
@@ -88,48 +106,105 @@ class PosController extends Controller {
         try {
             $db->beginTransaction();
 
-            $stmtCheck = $db->prepare('SELECT status FROM items WHERE id = ? FOR UPDATE');
+            $imageUrl = null;
+            if ($imageData) {
+                $upload_dir = __DIR__ . '/../../../public/uploads/';
+                if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+                
+                $imageData = str_replace('data:image/png;base64,', '', $imageData);
+                $imageData = str_replace('data:image/jpeg;base64,', '', $imageData);
+                $imageData = str_replace('data:image/jpg;base64,', '', $imageData);
+                $imageData = str_replace(' ', '+', $imageData);
+                $imageData = base64_decode($imageData);
+                
+                $file_name = 'sale_' . time() . '_' . uniqid() . '.png';
+                $target_file = $upload_dir . $file_name;
+                
+                if (file_put_contents($target_file, $imageData)) {
+                    $imageUrl = '/thrift_pos/uploads/' . $file_name;
+                }
+            }
+
             $salesColumns = $db->query("SHOW COLUMNS FROM sales LIKE 'status'")->fetch();
             if ($salesColumns) {
-                $stmtInsertSale = $db->prepare('INSERT INTO sales (user_id, total_amount, payment_method, status, cash_received, `change`) VALUES (?, ?, ?, ?, ?, ?)');
-                $stmtInsertSale->execute([$_SESSION['user_id'], $total, $paymentMethod, 'paid', $cashReceived, $change]);
+                $stmtInsertSale = $db->prepare('INSERT INTO sales (user_id, total_amount, payment_method, status, cash_received, `change`, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)');
+                $stmtInsertSale->execute([$_SESSION['user_id'], $total, $paymentMethod, 'paid', $cashReceived, $change, $imageUrl]);
             } else {
-                $stmtInsertSale = $db->prepare('INSERT INTO sales (user_id, total_amount, payment_method, cash_received, `change`) VALUES (?, ?, ?, ?, ?)');
-                $stmtInsertSale->execute([$_SESSION['user_id'], $total, $paymentMethod, $cashReceived, $change]);
+                $stmtInsertSale = $db->prepare('INSERT INTO sales (user_id, total_amount, payment_method, cash_received, `change`, image_url) VALUES (?, ?, ?, ?, ?, ?)');
+                $stmtInsertSale->execute([$_SESSION['user_id'], $total, $paymentMethod, $cashReceived, $change, $imageUrl]);
             }
             $saleId = $db->lastInsertId();
 
             $stmtInsertItem = $db->prepare('INSERT INTO sale_items (sale_id, item_id, price, discount, final_price) VALUES (?, ?, ?, ?, ?)');
-            $stmtUpdateItem = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
 
             $calculatedTotal = 0;
             foreach ($items as $item) {
-                if (empty($item['id'])) {
+                if (isset($item['category_id'])) {
+                    $rackCategoryModel = new RackCategory();
+                    $category = $rackCategoryModel->findById($item['category_id']);
+                    
+                    if (!$category) {
+                        throw new Exception('Category not found: ' . $item['category_id']);
+                    }
+
+                    $quantity = $item['quantity'] ?? 1;
+                    $price = (float) $item['selected_price'];
+                    
+                    // Check stock availability
+                    if ($category['stock_available'] < $quantity) {
+                        throw new Exception('Not enough stock available for ' . $category['name'] . '. Available: ' . $category['stock_available'] . ', Requested: ' . $quantity);
+                    }
+
+                    // Decrement stock
+                    $stmtUpdateStock = $db->prepare('UPDATE rack_categories SET stock_available = stock_available - ? WHERE id = ?');
+                    $stmtUpdateStock->execute([$quantity, $item['category_id']]);
+                    
+                    $stmtCreateItem = $db->prepare("INSERT INTO items (name, category, gender, price, tag_color, status, batch_name) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                    
+                    for ($i = 0; $i < $quantity; $i++) {
+                        $itemName = $category['name'] . ' - Sale #' . $saleId . ' Item ' . ($i + 1);
+                        $stmtCreateItem->execute([
+                            $itemName,
+                            $category['name'],
+                            $category['gender'],
+                            $price,
+                            'yellow',
+                            'sold',
+                            'POS Sale #' . $saleId
+                        ]);
+                        $itemId = $db->lastInsertId();
+                        
+                        $stmtInsertItem->execute([$saleId, $itemId, $price, 0, $price]);
+                        $calculatedTotal += $price;
+                    }
+                } else if (isset($item['id'])) {
+                    $stmtCheck = $db->prepare('SELECT status FROM items WHERE id = ? FOR UPDATE');
+                    $stmtCheck->execute([$item['id']]);
+                    $storedItem = $stmtCheck->fetch();
+                    if (!$storedItem) {
+                        throw new Exception('Item with ID ' . $item['id'] . ' not found.');
+                    }
+                    if ($storedItem['status'] !== 'available') {
+                        throw new Exception('Item with ID ' . $item['id'] . ' is not available for sale.');
+                    }
+
+                    $price = isset($item['price']) ? (float) $item['price'] : 0;
+                    $discount = isset($item['discount']) ? (float) $item['discount'] : 0;
+                    $finalPrice = isset($item['final_price']) ? (float) $item['final_price'] : $price - $discount;
+
+                    $expectedFinalPrice = $price - $discount;
+                    if (abs($finalPrice - $expectedFinalPrice) > 0.01) {
+                        $finalPrice = $expectedFinalPrice;
+                    }
+
+                    $calculatedTotal += $finalPrice;
+
+                    $stmtInsertItem->execute([$saleId, $item['id'], $price, $discount, $finalPrice]);
+                    $stmtUpdateItem = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
+                    $stmtUpdateItem->execute(['sold', $item['id']]);
+                } else {
                     throw new Exception('Invalid item entry in cart.');
                 }
-
-                $stmtCheck->execute([$item['id']]);
-                $storedItem = $stmtCheck->fetch();
-                if (!$storedItem) {
-                    throw new Exception('Item with ID ' . $item['id'] . ' not found.');
-                }
-                if ($storedItem['status'] !== 'available') {
-                    throw new Exception('Item with ID ' . $item['id'] . ' is not available for sale.');
-                }
-
-                $price = isset($item['price']) ? (float) $item['price'] : 0;
-                $discount = isset($item['discount']) ? (float) $item['discount'] : 0;
-                $finalPrice = isset($item['final_price']) ? (float) $item['final_price'] : $price - $discount;
-
-                $expectedFinalPrice = $price - $discount;
-                if (abs($finalPrice - $expectedFinalPrice) > 0.01) {
-                    $finalPrice = $expectedFinalPrice;
-                }
-
-                $calculatedTotal += $finalPrice;
-
-                $stmtInsertItem->execute([$saleId, $item['id'], $price, $discount, $finalPrice]);
-                $stmtUpdateItem->execute(['sold', $item['id']]);
             }
 
             if (abs($calculatedTotal - $total) > 0.01) {

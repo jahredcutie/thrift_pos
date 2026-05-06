@@ -27,26 +27,32 @@ class ReportController extends Controller {
             ORDER BY s.created_at DESC
         ")->fetchAll();
 
-        // Staff Performance
-        $staffPerformance = $db->query("
-            SELECT u.username, COUNT(s.id) as sales_count, SUM(s.total_amount) as total_revenue
-            FROM users u
-            LEFT JOIN sales s ON u.id = s.user_id
-            GROUP BY u.id
-        ")->fetchAll();
+        // Date filter
+        $selectedDate = $_GET['date'] ?? date('Y-m-d');
+        
+        $dailyEarningsStmt = $db->prepare("
+            SELECT SUM(total_amount) as total 
+            FROM sales 
+            WHERE DATE(created_at) = ?
+        ");
+        $dailyEarningsStmt->execute([$selectedDate]);
+        $dailyEarnings = $dailyEarningsStmt->fetch()['total'] ?? 0;
 
-        // Inventory Status
-        $inventoryStatus = $db->query("
-            SELECT status, COUNT(*) as count
-            FROM items
-            GROUP BY status
-        ")->fetchAll();
+        $dailyTransactionsStmt = $db->prepare("
+            SELECT * 
+            FROM sales 
+            WHERE DATE(created_at) = ?
+            ORDER BY created_at DESC
+        ");
+        $dailyTransactionsStmt->execute([$selectedDate]);
+        $dailyTransactions = $dailyTransactionsStmt->fetchAll();
 
         $this->view('admin/reports', [
             'dailySales' => $dailySales,
-            'staffPerformance' => $staffPerformance,
-            'inventoryStatus' => $inventoryStatus,
-            'allSales' => $allSales
+            'allSales' => $allSales,
+            'selectedDate' => $selectedDate,
+            'dailyEarnings' => $dailyEarnings,
+            'dailyTransactions' => $dailyTransactions
         ]);
     }
 }

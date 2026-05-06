@@ -11,14 +11,33 @@ $categories = $categories ?? [];
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-10 gap-4">
             <div>
                 <h1 class="text-xl md:text-2xl font-extrabold text-primary tracking-tight">Inventory Management</h1>
-                
+                <p class="text-sm text-secondary mt-2">Browse and manage items by section. Use the tabs to separate women and men inventory.</p>
             </div>
-            <button @click="editMode = false; currentItem = {}; showModal = true" 
-                class="w-full md:w-auto bg-accent text-white px-4 md:px-5 py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-2 hover:bg-accent-hover transition-all shadow-sm">
-                <i class="fa-solid fa-plus"></i>
-                Add New Item
-            </button>
+            <div class="flex flex-col md:flex-row gap-3">
+                <button @click="showBulkModal = true" 
+                    class="w-full md:w-auto bg-accent text-white px-4 md:px-5 py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-2 hover:bg-accent-hover transition-all shadow-sm">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                    Bulk Add Items
+                </button>
+            </div>
         </header>
+
+        <div class="flex flex-col gap-3 mb-6">
+            <div class="inline-flex rounded-full bg-surface border border-border p-1">
+                <button type="button" @click="selectedSection = 'all'"
+                    :class="selectedSection === 'all' ? 'bg-accent text-white' : 'bg-transparent text-secondary hover:text-primary'"
+                    class="px-4 py-2 rounded-full text-xs font-bold transition-all">All</button>
+                <button type="button" @click="selectedSection = 'women'"
+                    :class="selectedSection === 'women' ? 'bg-accent text-white' : 'bg-transparent text-secondary hover:text-primary'"
+                    class="px-4 py-2 rounded-full text-xs font-bold transition-all">Women</button>
+                <button type="button" @click="selectedSection = 'men'"
+                    :class="selectedSection === 'men' ? 'bg-accent text-white' : 'bg-transparent text-secondary hover:text-primary'"
+                    class="px-4 py-2 rounded-full text-xs font-bold transition-all">Men</button>
+            </div>
+            <div class="text-xs text-secondary">
+                Showing <span x-text="filteredItems().length"></span> item(s) in <span x-text="selectedSection === 'all' ? 'all sections' : selectedSection === 'women' ? 'women section' : 'men section'"></span>.
+            </div>
+        </div>
 
         <!-- Items Table / Cards -->
         <div class="bg-surface rounded-xl shadow-sm border border-border overflow-hidden">
@@ -35,13 +54,15 @@ $categories = $categories ?? [];
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
-                        <template x-for="item in items" :key="item.id">
+                        <template x-if="filteredItems().length === 0">
+                            <tr>
+                                <td colspan="5" class="px-6 py-10 text-center text-sm text-secondary">No inventory items found for this section. Use Bulk Add Items or switch section.</td>
+                            </tr>
+                        </template>
+                        <template x-for="item in filteredItems()" :key="item.id">
                         <tr class="hover:bg-background/50 transition-all group">
                             <td class="px-6 py-4">
-                                <div class="flex items-center gap-4">
-                                    <img :src="item.image_url" class="w-10 h-10 rounded-lg object-cover border border-border">
-                                    <span class="text-sm font-bold text-primary" x-text="item.name"></span>
-                                </div>
+                                <span class="text-sm font-bold text-primary" x-text="item.name"></span>
                             </td>
                             <td class="px-6 py-4 text-xs text-secondary font-medium" x-text="item.category"></td>
                             <td class="px-6 py-4 text-xs font-bold text-primary" x-text="'₱' + parseFloat(item.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></td>
@@ -72,10 +93,14 @@ $categories = $categories ?? [];
             
             <!-- Mobile Cards -->
             <div class="md:hidden divide-y divide-border">
-                <template x-for="item in items" :key="item.id">
+                <template x-if="filteredItems().length === 0">
+                    <div class="p-8 text-center text-sm text-secondary">
+                        No inventory items found for this section. Tap “Bulk Add Items” to start adding stock.
+                    </div>
+                </template>
+                <template x-for="item in filteredItems()" :key="item.id">
                 <div class="p-4 flex flex-col gap-3">
                     <div class="flex items-center gap-3">
-                        <img :src="item.image_url" class="w-14 h-14 rounded-lg object-cover border border-border">
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-bold text-primary truncate" x-text="item.name"></p>
                             <p class="text-xs text-secondary" x-text="item.category"></p>
@@ -111,7 +136,7 @@ $categories = $categories ?? [];
                     <h3 class="text-lg font-bold text-primary" x-text="editMode ? 'Edit Item' : 'Add New Item'"></h3>
                     <button @click="showModal = false" class="text-secondary hover:text-primary transition-colors"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <form :action="editMode ? '<?php echo $base_url; ?>/inventory/update' : '<?php echo $base_url; ?>/inventory/add'" method="POST" enctype="multipart/form-data" class="p-6 md:p-8 space-y-6">
+                <form :action="editMode ? '<?php echo $base_url; ?>/inventory/update' : '<?php echo $base_url; ?>/inventory/add'" method="POST" class="p-6 md:p-8 space-y-6">
                     <input type="hidden" name="id" :value="currentItem.id">
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -131,19 +156,18 @@ $categories = $categories ?? [];
                             </select>
                         </div>
                         <div>
+                            <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Gender</label>
+                            <select name="gender" required
+                                class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all appearance-none text-sm font-medium">
+                                <option value="women" :selected="currentItem.gender === 'women'">Women</option>
+                                <option value="men" :selected="currentItem.gender === 'men'">Men</option>
+                                <option value="unisex" :selected="currentItem.gender === 'unisex'">Unisex</option>
+                            </select>
+                        </div>
+                        <div>
                             <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Price (₱)</label>
                             <input type="number" step="0.01" name="price" :value="currentItem.price" required
                                 class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all text-sm font-medium">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Tag Color</label>
-                            <select name="tag_color" required
-                                class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all appearance-none text-sm font-medium">
-                                <option value="red" :selected="currentItem.tag_color === 'red'">Red (50% Off)</option>
-                                <option value="blue" :selected="currentItem.tag_color === 'blue'">Blue (30% Off)</option>
-                                <option value="green" :selected="currentItem.tag_color === 'green'">Green (20% Off)</option>
-                                <option value="yellow" :selected="currentItem.tag_color === 'yellow'">Yellow (No Discount)</option>
-                            </select>
                         </div>
                         <div x-show="editMode">
                             <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Status</label>
@@ -154,29 +178,76 @@ $categories = $categories ?? [];
                                 <option value="reserved" :selected="currentItem.status === 'reserved'">Reserved</option>
                             </select>
                         </div>
-                        <div class="col-span-2">
-                            <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Item Image</label>
-                            <div class="flex flex-col md:flex-row items-start md:items-center gap-4">
-                                <div class="w-20 h-20 rounded-lg bg-background border border-dashed border-border flex items-center justify-center overflow-hidden relative flex-shrink-0">
-                                    <template x-if="currentItem.image_url">
-                                        <img :src="currentItem.image_url" class="w-full h-full object-cover">
-                                    </template>
-                                    <template x-if="!currentItem.image_url">
-                                        <i class="fa-solid fa-cloud-arrow-up text-secondary/20 text-2xl"></i>
-                                    </template>
-                                </div>
-                                <div class="flex-1">
-                                    <input type="file" name="image" accept="image/*"
-                                        class="w-full text-[10px] text-secondary file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-primary file:text-white hover:file:opacity-80 transition-all">
-                                    <p class="mt-1.5 text-[10px] text-secondary/40 font-medium">Real product photo from your device</p>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     <button type="submit"
                         class="w-full bg-accent text-white py-3.5 rounded-lg font-bold text-sm hover:bg-accent-hover transition-all shadow-sm">
                         <span x-text="editMode ? 'Save Changes' : 'Add Item'"></span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Bulk Add Modal -->
+        <div x-show="showBulkModal" x-cloak class="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-4 bg-primary/40 backdrop-blur-sm overflow-auto">
+            <div @click.away="showBulkModal = false" class="bg-surface w-full max-w-2xl rounded-xl overflow-hidden shadow-xl scale-in border border-border">
+                <div class="p-6 border-b border-border flex items-center justify-between">
+                    <h3 class="text-lg font-bold text-primary">Bulk Product Creation</h3>
+                    <button @click="showBulkModal = false" class="text-secondary hover:text-primary transition-colors">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <form action="<?php echo $base_url; ?>/inventory/add-bulk" method="POST" class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Category (Rack)</label>
+                        <select name="category" required
+                            class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all appearance-none text-sm font-medium">
+                            <option value="" disabled>Select Category</option>
+                            <?php foreach ($rackCategories as $cat): ?>
+                            <option value="<?php echo $cat['name']; ?>"><?php echo $cat['name']; ?> - ₱<?php echo number_format($cat['price'], 2); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="mt-1 text-[10px] text-secondary/60">Select the rack/category for bulk creation</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Gender</label>
+                        <select name="gender" required
+                            class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all appearance-none text-sm font-medium">
+                            <option value="women">Women</option>
+                            <option value="men">Men</option>
+                            <option value="unisex">Unisex</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Price (₱)</label>
+                        <input type="number" step="0.01" name="price" 
+                            class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all text-sm font-medium">
+                        <p class="mt-1 text-[10px] text-secondary/60">Leave empty to use rack's default price</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Stock Quantity</label>
+                        <input type="number" name="quantity" min="1" max="1000" required value="10"
+                            class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all text-sm font-medium">
+                        <p class="mt-1 text-[10px] text-secondary/60">Number of items to add (1-1000)</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Batch Name (Optional)</label>
+                        <input type="text" name="batch_name" placeholder="e.g., Printed Shirts Rack A"
+                            class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all text-sm font-medium">
+                        <p class="mt-1 text-[10px] text-secondary/60">Optional name for this batch of items</p>
+                    </div>
+                    <div class="bg-accent/5 border border-accent/20 rounded-lg p-4">
+                        <h4 class="text-sm font-bold text-primary mb-2">What will happen:</h4>
+                        <ul class="text-xs text-secondary space-y-1">
+                            <li>• System will auto-generate <strong>unique IDs</strong> for each item</li>
+                            <li>• Items will be tagged under the selected category with <strong>selected price</strong></li>
+                            <li>• All items will default to <strong>"Available"</strong> status</li>
+                            <li>• Rack stock will be updated automatically</li>
+                        </ul>
+                    </div>
+                    <button type="submit"
+                        class="w-full bg-accent text-white py-3.5 rounded-lg font-bold text-sm hover:bg-accent-hover transition-all shadow-sm">
+                        Create Items
                     </button>
                 </form>
             </div>
@@ -193,11 +264,18 @@ function inventoryApp() {
         currentItem: {},
         sidebarOpen: localStorage.getItem('sidebarOpen') === 'true',
         items: <?php echo json_encode($items ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>,
+        selectedSection: 'all',
         init() {
             this.$watch('darkMode', val => localStorage.setItem('darkMode', val));
             this.$watch('sidebarOpen', val => localStorage.setItem('sidebarOpen', val));
             window.addEventListener('darkModeChanged', (e) => {
                 this.darkMode = e.detail;
+            });
+        },
+        filteredItems() {
+            return this.items.filter(item => {
+                if (this.selectedSection === 'all') return true;
+                return item.gender === this.selectedSection || item.gender === 'unisex';
             });
         },
         editItem(item) {

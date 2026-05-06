@@ -20,7 +20,7 @@
     <?php require_once __DIR__ . '/../layouts/sidebar.php'; ?>
     <?php $sales = $sales ?? []; ?>
 
-    <main class="flex-1 ml-20 md:ml-64 bg-background min-h-screen p-4 md:p-8">
+    <main :class="sidebarOpen ? 'ml-64' : 'ml-20 md:ml-64'" class="flex-1 bg-background min-h-screen p-4 md:p-8 transition-all duration-300">
         <header class="mb-8">
             <h1 class="text-2xl md:text-3xl font-extrabold text-primary">Process Returns</h1>
         </header>
@@ -28,8 +28,14 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
             <!-- Sales List -->
             <div class="bg-surface rounded-2xl shadow-sm border border-border overflow-hidden">
-                <div class="p-4 md:p-6 border-b border-border">
+                <div class="p-4 md:p-6 border-b border-border flex items-center justify-between gap-3">
                     <h3 class="font-bold text-primary">Recent Sales</h3>
+                    <form action="<?php echo $base_url; ?>/returns/process" method="POST" onsubmit="return confirm('Restore ALL items from ALL recent sales to inventory? This will clear all orders from the returns page!')" class="w-full md:w-auto">
+                        <input type="hidden" name="return_all_sales" value="1">
+                        <button type="submit" class="w-full md:w-auto px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 text-xs font-bold rounded-xl hover:bg-red-600 hover:text-white transition-all">
+                            <i class="fa-solid fa-rotate-left mr-1"></i> Return All Sales
+                        </button>
+                    </form>
                 </div>
                 <div class="divide-y divide-border/50">
                     <?php foreach ($sales as $sale): ?>
@@ -106,6 +112,13 @@ function returnApp() {
         selectedSale: null,
         saleItems: [],
         loadingItems: false,
+        init() {
+            this.$watch('darkMode', val => localStorage.setItem('darkMode', val));
+            this.$watch('sidebarOpen', val => localStorage.setItem('sidebarOpen', val));
+            window.addEventListener('darkModeChanged', (e) => {
+                this.darkMode = e.detail;
+            });
+        },
 
         formatPaymentLabel(method) {
             method = (method || '').toString().trim().toLowerCase();
