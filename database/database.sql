@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS reservations (
     item_id INT,
     customer_name VARCHAR(100) NOT NULL,
     contact_number VARCHAR(20),
+    quantity INT NOT NULL DEFAULT 1,
     notes TEXT,
     duration_days INT DEFAULT 1,
     expiration_date DATETIME,

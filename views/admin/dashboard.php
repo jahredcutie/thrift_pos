@@ -50,13 +50,13 @@ function formatPaymentLabel($method) {
 
         <!-- Stats Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-            <!-- Revenue on Selected Date -->
+            <!-- Revenue Today -->
             <div class="bg-surface p-6 rounded-xl shadow-sm border border-border transition-soft hover:border-accent/30">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-10 h-10 bg-accent/10 text-accent rounded-lg flex items-center justify-center">
                         <i class="fa-solid fa-coins text-lg"></i>
                     </div>
-                    <span class="text-xs font-bold text-secondary tracking-wider uppercase">Revenue on Selected Date</span>
+                    <span class="text-xs font-bold text-secondary tracking-wider uppercase">Revenue Today</span>
                 </div>
                 <h2 class="text-2xl font-bold text-primary tracking-tight">₱<?php echo number_format($stats['sales_on_date'], 2); ?></h2>
             </div>
@@ -67,7 +67,7 @@ function formatPaymentLabel($method) {
                     <div class="w-10 h-10 bg-accent/10 text-accent rounded-lg flex items-center justify-center">
                         <i class="fa-solid fa-box-open text-lg"></i>
                     </div>
-                    <span class="text-xs font-bold text-secondary tracking-wider uppercase">Available</span>
+                    <span class="text-xs font-bold text-secondary tracking-wider uppercase">Available Items</span>
                 </div>
                 <h2 class="text-2xl font-bold text-primary tracking-tight"><?php echo $stats['available']; ?></h2>
             </div>
@@ -96,28 +96,73 @@ function formatPaymentLabel($method) {
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Rack Stock Overview -->
-            <div class="bg-surface rounded-xl p-6 shadow-sm border border-border">
-                <h3 class="text-lg font-bold text-primary mb-6">Rack Stock Overview</h3>
-                <div class="space-y-4 max-h-[400px] overflow-y-auto">
-                    <?php
-                    require_once __DIR__ . '/../../database/app/Models/RackCategory.php';
-                    $rackCategoryModel = new RackCategory();
-                    $rackCategories = $rackCategoryModel->getAll();
-                    foreach ($rackCategories as $cat):
-                        $stockPercent = ($cat['stock_available'] / $cat['stock_total']) * 100;
-                        $colorClass = $stockPercent > 50 ? 'bg-green-500' : ($stockPercent > 20 ? 'bg-yellow-500' : 'bg-red-500');
-                    ?>
-                    <div class="space-y-2">
-                        <div class="flex justify-between items-center px-1">
-                            <span class="text-xs font-bold text-primary"><?php echo $cat['name']; ?> (<?php echo ucfirst($cat['gender']); ?>)</span>
-                            <span class="text-xs font-bold text-secondary"><?php echo $cat['stock_available']; ?>/<?php echo $cat['stock_total']; ?> available</span>
-                        </div>
-                        <div class="h-2 bg-background rounded-full overflow-hidden border border-border">
-                            <div class="h-full <?php echo $colorClass; ?> rounded-full transition-all duration-1000" style="width: <?php echo $stockPercent; ?>%"></div>
-                        </div>
+            <!-- Earnings Calendar -->
+            <div class="bg-surface rounded-3xl p-6 shadow-sm border border-border">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-primary">Earnings Calendar</h3>
+                        <p class="text-sm text-secondary mt-1">Overview of daily revenue for the selected month.</p>
                     </div>
-                    <?php endforeach; ?>
+                    <div class="inline-flex items-center gap-2">
+                        <button type="button" @click="window.location.href = '<?php echo $base_url; ?>/dashboard?date=' + '<?php echo date('Y-m-d', strtotime($stats['selected_date'].' -1 month')); ?>'" class="w-10 h-10 rounded-2xl bg-background border border-border text-secondary hover:border-accent hover:text-accent transition-all">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <div class="px-4 py-2 rounded-2xl bg-background border border-border text-sm font-semibold text-primary">
+                            <?php echo date('F Y', strtotime($stats['selected_date'])); ?>
+                        </div>
+                        <button type="button" @click="window.location.href = '<?php echo $base_url; ?>/dashboard?date=' + '<?php echo date('Y-m-d', strtotime($stats['selected_date'].' +1 month')); ?>'" class="w-10 h-10 rounded-2xl bg-background border border-border text-secondary hover:border-accent hover:text-accent transition-all">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-7 gap-2 text-[10px] uppercase tracking-[0.25em] text-secondary mb-3">
+                    <div class="text-center py-2 rounded-2xl bg-background">Sun</div>
+                    <div class="text-center py-2 rounded-2xl bg-background">Mon</div>
+                    <div class="text-center py-2 rounded-2xl bg-background">Tue</div>
+                    <div class="text-center py-2 rounded-2xl bg-background">Wed</div>
+                    <div class="text-center py-2 rounded-2xl bg-background">Thu</div>
+                    <div class="text-center py-2 rounded-2xl bg-background">Fri</div>
+                    <div class="text-center py-2 rounded-2xl bg-background">Sat</div>
+                </div>
+                <div class="grid grid-cols-7 gap-3">
+                    <?php
+                    $monthStart = strtotime(date('Y-m-01', strtotime($stats['selected_date'])));
+                    $daysInMonth = date('t', $monthStart);
+                    $startDayOfWeek = date('w', $monthStart);
+                    $maxAmount = $earningsCalendarData ? max($earningsCalendarData) : 0;
+                    for ($blank = 0; $blank < $startDayOfWeek; $blank++):
+                    ?>
+                        <div class="min-h-[7rem] rounded-3xl bg-background border border-border"></div>
+                    <?php endfor; ?>
+                    <?php for ($day = 1; $day <= $daysInMonth; $day++):
+                        $dayKey = date('Y-m-d', strtotime(sprintf('%s-%02d', date('Y-m', $monthStart), $day)));
+                        $amount = $earningsCalendarData[$dayKey] ?? 0;
+                        $hasSales = $amount > 0;
+                        $isSelected = $dayKey === $stats['selected_date'];
+                        $cellClass = $isSelected ? 'border-accent/60 ring-1 ring-accent/15 bg-accent/5' : 'bg-background';
+                        $progressWidth = $maxAmount > 0 ? min(100, ($amount / $maxAmount) * 100) : 0;
+                    ?>
+                    <div class="min-h-[7rem] p-4 rounded-3xl border border-border <?php echo $cellClass; ?>">
+                        <div class="flex items-start justify-between gap-2">
+                            <span class="text-sm font-bold text-primary"><?php echo $day; ?></span>
+                            <?php if ($isSelected): ?>
+                                <span class="text-[10px] font-semibold uppercase tracking-[0.25em] text-accent">Today</span>
+                            <?php endif; ?>
+                        </div>
+                        <?php if ($hasSales): ?>
+                            <p class="text-sm font-bold text-emerald-700 mt-3">₱<?php echo number_format($amount, 2); ?></p>
+                            <div class="mt-3 h-2 rounded-full bg-background border border-border overflow-hidden">
+                                <div class="h-full bg-emerald-500 rounded-full" style="width: <?php echo $progressWidth; ?>%;"></div>
+                            </div>
+                            <div class="flex items-center gap-2 mt-3">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                <span class="text-[11px] text-secondary">Daily earnings</span>
+                            </div>
+                        <?php else: ?>
+                            <p class="text-[11px] text-secondary mt-3">No sales</p>
+                        <?php endif; ?>
+                    </div>
+                    <?php endfor; ?>
                 </div>
             </div>
 
@@ -125,7 +170,7 @@ function formatPaymentLabel($method) {
             <div class="bg-surface rounded-xl p-6 shadow-sm border border-border">
                 <div class="flex items-center justify-between mb-6">
                     <h3 class="text-lg font-bold text-primary">Recent Sales</h3>
-                    <a href="<?php echo $base_url; ?>/reports" class="text-xs font-bold text-accent hover:text-accent-hover transition-soft">View All</a>
+                    <a href="<?php echo $base_url; ?>/sales-history" class="text-xs font-bold text-accent hover:text-accent-hover transition-soft">View All</a>
                 </div>
                 <div class="space-y-3">
                     <?php foreach ($recentSales as $sale): ?>
@@ -143,6 +188,30 @@ function formatPaymentLabel($method) {
                     </div>
                     <?php endforeach; ?>
                 </div>
+            </div>
+        </div>
+
+        <div class="mt-8 bg-surface rounded-xl p-6 shadow-sm border border-border">
+            <h3 class="text-lg font-bold text-primary mb-6">Rack Stock Overview</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <?php foreach ($rackCategories as $cat):
+                    $stockPercent = $cat['stock_total'] > 0 ? ($cat['stock_available'] / $cat['stock_total']) * 100 : 0;
+                    $stockPercent = min(max($stockPercent, 0), 100);
+                    $colorClass = $stockPercent > 50 ? 'bg-green-500' : ($stockPercent > 20 ? 'bg-yellow-500' : 'bg-red-500');
+                ?>
+                <div class="bg-background rounded-3xl border border-border p-4">
+                    <div class="flex items-start justify-between gap-3 mb-4">
+                        <div>
+                            <p class="text-sm font-bold text-primary"><?php echo $cat['name']; ?> <?php echo !empty($cat['gender']) ? '('.ucfirst($cat['gender']).')' : ''; ?></p>
+                            <?php if (!empty($cat['subcategory'])): ?><p class="text-[11px] text-secondary mt-1"><?php echo $cat['subcategory']; ?></p><?php endif; ?>
+                        </div>
+                        <span class="text-[11px] font-bold text-secondary"><?php echo $cat['stock_available']; ?>/<?php echo $cat['stock_total']; ?></span>
+                    </div>
+                    <div class="h-2 bg-background rounded-full overflow-hidden border border-border">
+                        <div class="h-full <?php echo $colorClass; ?> rounded-full" style="width: <?php echo $stockPercent; ?>%"></div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
             </div>
         </div>
     </main>

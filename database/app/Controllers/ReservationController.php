@@ -102,12 +102,17 @@ class ReservationController extends Controller {
                 throw new Exception('Category not found');
             }
 
-            if ($category['stock_available'] <= 0) {
-                throw new Exception('No stock available for this rack.');
+            $quantity = isset($_POST['quantity']) ? (int) $_POST['quantity'] : 1;
+            if ($quantity < 1) {
+                throw new Exception('Reservation quantity must be at least 1.');
             }
 
-            $stmtUpdateStock = $db->prepare('UPDATE rack_categories SET stock_available = stock_available - 1 WHERE id = ?');
-            $stmtUpdateStock->execute([$categoryId]);
+            if ($category['stock_available'] < $quantity) {
+                throw new Exception('Not enough stock available for this rack. Available: ' . $category['stock_available'] . ', Requested: ' . $quantity);
+            }
+
+            $stmtUpdateStock = $db->prepare('UPDATE rack_categories SET stock_available = stock_available - ? WHERE id = ?');
+            $stmtUpdateStock->execute([$quantity, $categoryId]);
 
             $imageUrl = null;
             if ($imageData) {
@@ -136,8 +141,13 @@ class ReservationController extends Controller {
 
             $expirationDate = date('Y-m-d H:i:s', strtotime('+' . $duration . ' days'));
 
-            $stmtRes = $db->prepare('INSERT INTO reservations (customer_name, contact_number, status, duration_days, expiration_date, image_url, category_id, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-            $stmtRes->execute([$customerName, $contactNumber, $statusValue, $duration, $expirationDate, $imageUrl, $categoryId, $price]);
+            $quantityColumn = $db->query("SHOW COLUMNS FROM reservations LIKE 'quantity'")->fetch();
+            if (!$quantityColumn) {
+                $db->exec('ALTER TABLE reservations ADD COLUMN quantity INT NOT NULL DEFAULT 1 AFTER contact_number');
+            }
+
+            $stmtRes = $db->prepare('INSERT INTO reservations (customer_name, contact_number, status, duration_days, expiration_date, image_url, category_id, price, quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $stmtRes->execute([$customerName, $contactNumber, $statusValue, $duration, $expirationDate, $imageUrl, $categoryId, $price, $quantity]);
 
             $db->commit();
 

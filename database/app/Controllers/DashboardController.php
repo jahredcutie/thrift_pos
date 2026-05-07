@@ -14,7 +14,6 @@ class DashboardController extends Controller {
         $selectedDate = $_GET['date'] ?? date('Y-m-d');
         
         // Sales Stats
-        $salesOnDate = $db->prepare("SELECT SUM(total_amount) as total FROM sales WHERE DATE(created_at) = ?")->fetch(PDO::FETCH_ASSOC);
         $salesOnDateStmt = $db->prepare("SELECT SUM(total_amount) as total FROM sales WHERE DATE(created_at) = ?");
         $salesOnDateStmt->execute([$selectedDate]);
         $salesOnDate = $salesOnDateStmt->fetch();
@@ -31,13 +30,35 @@ class DashboardController extends Controller {
             FROM items
         ")->fetch();
         
-        // Recent Sales for selected date
-        $recentSalesStmt = $db->prepare("SELECT s.*, u.username FROM sales s JOIN users u ON s.user_id = u.id WHERE DATE(s.created_at) = ? ORDER BY s.created_at DESC");
-        $recentSalesStmt->execute([$selectedDate]);
+        // Recent Sales (latest 5 from Sales History)
+        $recentSalesStmt = $db->query("SELECT s.*, u.username FROM sales s JOIN users u ON s.user_id = u.id ORDER BY s.created_at DESC LIMIT 5");
         $recentSales = $recentSalesStmt->fetchAll();
         
         // Sales by Category (all time)
         $salesByCategory = $db->query("SELECT i.category, COUNT(si.id) as count FROM sale_items si JOIN items i ON si.item_id = i.id GROUP BY i.category")->fetchAll();
+        
+        // Earnings Calendar Data (daily sales for selected month)
+        $currentMonth = date('Y-m', strtotime($selectedDate));
+        $earningsCalendarStmt = $db->prepare("
+            SELECT DATE(created_at) as date, SUM(total_amount) as total 
+            FROM sales 
+            WHERE DATE(created_at) LIKE ? 
+            GROUP BY DATE(created_at)
+        ");
+        $earningsCalendarStmt->execute([$currentMonth . '%']);
+        $earningsCalendarData = $earningsCalendarStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+        
+        // Rack Stock Overview - real time rack category stock totals
+        require_once __DIR__ . '/../Models/RackCategory.php';
+        $rackCategoryModel = new RackCategory();
+        $rackCategories = $rackCategoryModel->getAll();
+
+        $totalRackAvailable = 0;
+        $totalRackStock = 0;
+        foreach ($rackCategories as &$cat) {
+            $totalRackAvailable += $cat['stock_available'];
+            $totalRackStock += $cat['stock_total'];
+        }
 
         $this->view('admin/dashboard', [
             'stats' => [
@@ -45,12 +66,14 @@ class DashboardController extends Controller {
                 'sales_on_date' => $salesOnDate['total'] ?? 0,
                 'total' => $totalSales['total'] ?? 0,
                 'items_sold' => $inventoryCounts['sold'] ?? 0,
-                'available' => $inventoryCounts['available'] ?? 0,
+                'available' => $totalRackAvailable,
                 'reserved' => $inventoryCounts['reserved'] ?? 0,
-                'total_items' => $inventoryCounts['total'] ?? 0
+                'total_items' => $totalRackStock
             ],
             'recentSales' => $recentSales,
-            'categoryStats' => $salesByCategory
+            'categoryStats' => $salesByCategory,
+            'earningsCalendarData' => $earningsCalendarData,
+            'rackCategories' => $rackCategories
         ]);
     }
 }

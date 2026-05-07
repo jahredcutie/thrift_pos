@@ -10,7 +10,7 @@ class InventoryController extends Controller {
 
     public function index() {
         $itemModel = new Item();
-        $items = $itemModel->getAll();
+        $items = $itemModel->getAll(null, null, null, true);
         $categories = $itemModel->getCategories();
         
         require_once __DIR__ . '/../Models/RackCategory.php';
@@ -86,57 +86,118 @@ class InventoryController extends Controller {
 
     public function delete() {
         $db = getDB();
-        $stmt = $db->prepare("DELETE FROM items WHERE id = ?");
-        $stmt->execute([$_POST['id']]);
+        
+        if (isset($_POST['ids']) && is_array($_POST['ids'])) {
+            $placeholders = str_repeat('?,', count($_POST['ids']) - 1) . '?';
+            
+            // First delete from sale_items
+            $stmtDeleteSaleItems = $db->prepare("DELETE FROM sale_items WHERE item_id IN ($placeholders)");
+            $stmtDeleteSaleItems->execute($_POST['ids']);
+            
+            // Then delete from items
+            $stmt = $db->prepare("DELETE FROM items WHERE id IN ($placeholders)");
+            $stmt->execute($_POST['ids']);
+        } else if (isset($_POST['id'])) {
+            $itemId = $_POST['id'];
+            
+            // First delete from sale_items
+            $stmtDeleteSaleItems = $db->prepare("DELETE FROM sale_items WHERE item_id = ?");
+            $stmtDeleteSaleItems->execute([$itemId]);
+            
+            // Then delete from items
+            $stmt = $db->prepare("DELETE FROM items WHERE id = ?");
+            $stmt->execute([$itemId]);
+        }
+        
         $this->redirect('/inventory');
     }
 
     public function addBulk() {
-        $category = $_POST['category'];
-        $gender = $_POST['gender'];
-        $quantity = (int)$_POST['quantity'];
-        $tag_color = $_POST['tag_color'] ?? 'yellow';
-        $batch_name = $_POST['batch_name'] ?? '';
-        $price = isset($_POST['price']) ? (float)$_POST['price'] : null;
-
-        if ($quantity <= 0 || $quantity > 1000) {
-            $this->redirect('/inventory');
-            return;
-        }
-
         $db = getDB();
+        $batchName = 'Bulk Upload ' . date('Y-m-d H:i:s');
         
-        // Get rack category
+        $itemModel = new Item();
         require_once __DIR__ . '/../Models/RackCategory.php';
         $rackCategoryModel = new RackCategory();
-        $cat = $rackCategoryModel->findByName($category);
+
+        $products = [];
         
-        if (!$price && $cat) {
-            $price = $cat['price'];
+        // Handle new bulk upload form with multiple products
+        if (isset($_POST['bulk_products'])) {
+            $products = json_decode($_POST['bulk_products'], true);
         }
 
-        $itemModel = new Item();
-        
-        for ($i = 0; $i < $quantity; $i++) {
-            // Generate unique name
-            $name = $this->generateItemName($category, $gender, $batch_name, $i);
+        if (empty($products)) {
+            // Fallback to old single category bulk upload
+            $category = $_POST['category'] ?? '';
+            $gender = $_POST['gender'] ?? 'unisex';
+            $quantity = isset($_POST['quantity']) ? (int)$_POST['quantity'] : 10;
+            $tag_color = $_POST['tag_color'] ?? 'yellow';
+            $price = isset($_POST['price']) ? (float)$_POST['price'] : null;
+
+            if ($quantity <= 0 || $quantity > 1000) {
+                $this->redirect('/inventory');
+                return;
+            }
+
+            $cat = $rackCategoryModel->findByName($category);
             
-            $stmt = $db->prepare("INSERT INTO items (name, category, gender, price, tag_color, status, batch_name) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([
-                $name,
-                $category,
-                $gender,
-                $price,
-                $tag_color,
-                'available',
-                $batch_name ?: null
-            ]);
-        }
-        
-        // Update rack stock if we found the category
-        if ($cat) {
-            $stmtUpdateStock = $db->prepare('UPDATE rack_categories SET stock_total = stock_total + ?, stock_available = stock_available + ? WHERE id = ?');
-            $stmtUpdateStock->execute([$quantity, $quantity, $cat['id']]);
+            if (!$price && $cat) {
+                $price = $cat['price'];
+            }
+            
+            for ($i = 0; $i < $quantity; $i++) {
+                $name = $this->generateItemName($category, $gender, $batchName, $i);
+                $stmt = $db->prepare("INSERT INTO items (name, category, gender, price, tag_color, status, batch_name) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([
+                    $name,
+                    $category,
+                    $gender,
+                    $price,
+                    $tag_color,
+                    'available',
+                    $batchName
+                ]);
+            }
+            
+            if ($cat) {
+                $stmtUpdateStock = $db->prepare('UPDATE rack_categories SET stock_total = stock_total + ?, stock_available = stock_available + ? WHERE id = ?');
+                $stmtUpdateStock->execute([$quantity, $quantity, $cat['id']]);
+            }
+        } else {
+            // Handle new row-based bulk upload
+            foreach ($products as $product) {
+                $name = trim($product['name'] ?? '');
+                $category = trim($product['category'] ?? '');
+                $gender = trim($product['gender'] ?? 'unisex');
+                $price = isset($product['price']) ? (float)$product['price'] : 0;
+                $stock = isset($product['stock']) ? (int)$product['stock'] : 1;
+                
+                if (empty($name) || empty($category) || $price <= 0 || $stock <= 0) {
+                    continue;
+                }
+
+                $cat = $rackCategoryModel->findByName($category);
+                
+                for ($i = 0; $i < $stock; $i++) {
+                    $itemName = $name . ($stock > 1 ? ' ' . ($i + 1) : '');
+                    $stmt = $db->prepare("INSERT INTO items (name, category, gender, price, tag_color, status, batch_name) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                    $stmt->execute([
+                        $itemName,
+                        $category,
+                        $gender,
+                        $price,
+                        'yellow',
+                        'available',
+                        $batchName
+                    ]);
+                }
+
+                if ($cat) {
+                    $stmtUpdateStock = $db->prepare('UPDATE rack_categories SET stock_total = stock_total + ?, stock_available = stock_available + ? WHERE id = ?');
+                    $stmtUpdateStock->execute([$stock, $stock, $cat['id']]);
+                }
+            }
         }
         
         $this->redirect('/inventory');

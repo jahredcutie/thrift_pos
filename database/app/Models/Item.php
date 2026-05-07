@@ -456,9 +456,13 @@ class Item extends Model {
         return $item['image_url'] ?? '';
     }
 
-    public function getAll($section = null, $category = null, $search = null) {
+    public function getAll($section = null, $category = null, $search = null, $onlyBulk = false) {
         $query = "SELECT * FROM items WHERE 1=1";
         $params = [];
+
+        if ($onlyBulk) {
+            $query .= " AND batch_name IS NOT NULL AND status = 'available'";
+        }
 
         if ($section === 'women') {
             $query .= " AND (gender = 'women' OR gender = 'unisex')";
@@ -501,11 +505,6 @@ class Item extends Model {
     }
 
     public function getCategories() {
-        $stmt = $this->db->query("SELECT DISTINCT category FROM items");
-        $dbCategories = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        $defaultCategories = ['Tops', 'Bottoms', 'Outerwear', 'Footwear', 'Accessories', 'Dresses', 'Others'];
-        
-        return array_unique(array_merge($defaultCategories, $dbCategories));
+        return ['Tops', 'Bottoms', 'Outerwear', 'Footwear', 'Dresses', 'Accessories'];
     }
 }

@@ -19,14 +19,6 @@ class ReportController extends Controller {
             LIMIT 7
         ")->fetchAll();
 
-        // Get all recent sales (for orders list)
-        $allSales = $db->query("
-            SELECT s.*, u.username 
-            FROM sales s 
-            JOIN users u ON s.user_id = u.id 
-            ORDER BY s.created_at DESC
-        ")->fetchAll();
-
         // Date filter
         $selectedDate = $_GET['date'] ?? date('Y-m-d');
         
@@ -49,7 +41,6 @@ class ReportController extends Controller {
 
         $this->view('admin/reports', [
             'dailySales' => $dailySales,
-            'allSales' => $allSales,
             'selectedDate' => $selectedDate,
             'dailyEarnings' => $dailyEarnings,
             'dailyTransactions' => $dailyTransactions

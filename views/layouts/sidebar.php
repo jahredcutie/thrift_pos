@@ -21,6 +21,7 @@
                 ['path' => '/reservations', 'icon' => 'fa-calendar-check', 'label' => 'Reservations', 'role' => 'any'],
                 ['path' => '/inventory', 'icon' => 'fa-boxes-stacked', 'label' => 'Inventory', 'role' => 'admin'],
                 ['path' => '/reports', 'icon' => 'fa-chart-line', 'label' => 'Reports', 'role' => 'admin'],
+                ['path' => '/sales-history', 'icon' => 'fa-clock-rotate-left', 'label' => 'Sales History', 'role' => 'admin'],
             ];
 
             foreach ($menu_items as $item): 

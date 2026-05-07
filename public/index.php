@@ -30,6 +30,7 @@ $router->add('POST', '/inventory/update', 'InventoryController@update');
 $router->add('POST', '/inventory/delete', 'InventoryController@delete');
 
 $router->add('GET', '/reports', 'ReportController@index');
+$router->add('GET', '/sales-history', 'SalesHistoryController@index');
 
 $router->add('GET', '/users', 'UserController@index');
 $router->add('POST', '/users/add', 'UserController@add');

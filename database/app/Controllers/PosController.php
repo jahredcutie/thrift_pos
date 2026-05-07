@@ -86,6 +86,7 @@ class PosController extends Controller {
 
         $items = $data['items'];
         $total = (float) $data['total'];
+        $bargainedPrice = isset($data['bargained_price']) ? (float) $data['bargained_price'] : null;
         $paymentMethod = $data['payment_method'];
         $cashReceived = isset($data['cash_received']) ? (float) $data['cash_received'] : null;
         $change = isset($data['change']) ? (float) $data['change'] : null;
@@ -137,7 +138,26 @@ class PosController extends Controller {
 
             $stmtInsertItem = $db->prepare('INSERT INTO sale_items (sale_id, item_id, price, discount, final_price) VALUES (?, ?, ?, ?, ?)');
 
-            $calculatedTotal = 0;
+            $originalTotal = 0;
+            $totalItemsQuantity = 0;
+            
+            // First, calculate original total and total quantity
+            foreach ($items as $item) {
+                if (isset($item['category_id'])) {
+                    $quantity = $item['quantity'] ?? 1;
+                    $price = (float) $item['selected_price'];
+                    $originalTotal += $price * $quantity;
+                    $totalItemsQuantity += $quantity;
+                } else if (isset($item['id'])) {
+                    $price = isset($item['price']) ? (float) $item['price'] : 0;
+                    $discount = isset($item['discount']) ? (float) $item['discount'] : 0;
+                    $finalPrice = isset($item['final_price']) ? (float) $item['final_price'] : $price - $discount;
+                    $originalTotal += $finalPrice;
+                    $totalItemsQuantity += 1;
+                }
+            }
+
+            // Process items and apply bargained price if needed
             foreach ($items as $item) {
                 if (isset($item['category_id'])) {
                     $rackCategoryModel = new RackCategory();
@@ -148,7 +168,7 @@ class PosController extends Controller {
                     }
 
                     $quantity = $item['quantity'] ?? 1;
-                    $price = (float) $item['selected_price'];
+                    $originalItemPrice = (float) $item['selected_price'];
                     
                     // Check stock availability
                     if ($category['stock_available'] < $quantity) {
@@ -163,19 +183,22 @@ class PosController extends Controller {
                     
                     for ($i = 0; $i < $quantity; $i++) {
                         $itemName = $category['name'] . ' - Sale #' . $saleId . ' Item ' . ($i + 1);
+                        
+                        // Calculate item price: if bargained, distribute evenly per item; else use original
+                        $itemFinalPrice = $bargainedPrice ? ($total / $totalItemsQuantity) : $originalItemPrice;
+                        
                         $stmtCreateItem->execute([
                             $itemName,
                             $category['name'],
                             $category['gender'],
-                            $price,
+                            $itemFinalPrice,
                             'yellow',
                             'sold',
                             'POS Sale #' . $saleId
                         ]);
                         $itemId = $db->lastInsertId();
                         
-                        $stmtInsertItem->execute([$saleId, $itemId, $price, 0, $price]);
-                        $calculatedTotal += $price;
+                        $stmtInsertItem->execute([$saleId, $itemId, $originalItemPrice, 0, $itemFinalPrice]);
                     }
                 } else if (isset($item['id'])) {
                     $stmtCheck = $db->prepare('SELECT status FROM items WHERE id = ? FOR UPDATE');
@@ -188,27 +211,19 @@ class PosController extends Controller {
                         throw new Exception('Item with ID ' . $item['id'] . ' is not available for sale.');
                     }
 
-                    $price = isset($item['price']) ? (float) $item['price'] : 0;
+                    $originalPrice = isset($item['price']) ? (float) $item['price'] : 0;
                     $discount = isset($item['discount']) ? (float) $item['discount'] : 0;
-                    $finalPrice = isset($item['final_price']) ? (float) $item['final_price'] : $price - $discount;
+                    $originalFinalPrice = isset($item['final_price']) ? (float) $item['final_price'] : $originalPrice - $discount;
+                    
+                    // Calculate final price: if bargained, distribute evenly per item; else use original
+                    $finalPrice = $bargainedPrice ? ($total / $totalItemsQuantity) : $originalFinalPrice;
 
-                    $expectedFinalPrice = $price - $discount;
-                    if (abs($finalPrice - $expectedFinalPrice) > 0.01) {
-                        $finalPrice = $expectedFinalPrice;
-                    }
-
-                    $calculatedTotal += $finalPrice;
-
-                    $stmtInsertItem->execute([$saleId, $item['id'], $price, $discount, $finalPrice]);
+                    $stmtInsertItem->execute([$saleId, $item['id'], $originalPrice, $discount, $finalPrice]);
                     $stmtUpdateItem = $db->prepare('UPDATE items SET status = ? WHERE id = ?');
                     $stmtUpdateItem->execute(['sold', $item['id']]);
                 } else {
                     throw new Exception('Invalid item entry in cart.');
                 }
-            }
-
-            if (abs($calculatedTotal - $total) > 0.01) {
-                throw new Exception('Total amount mismatch.');
             }
 
             $db->commit();

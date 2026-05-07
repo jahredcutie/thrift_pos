@@ -276,7 +276,7 @@ require_once __DIR__ . '/../layouts/header.php';
 
     <!-- Reservation Form Modal -->
     <div x-show="reserveModal" x-cloak class="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-4 bg-primary/40 backdrop-blur-sm overflow-auto">
-        <div @click.away="reserveModal = false" class="bg-surface w-full max-w-lg rounded-xl overflow-hidden shadow-xl scale-in border border-border">
+        <div @click.away="if (!cameraModalActive) reserveModal = false" class="bg-surface w-full max-w-lg rounded-xl overflow-hidden shadow-xl scale-in border border-border">
             <div class="p-6 border-b border-border flex items-center justify-between">
                 <h3 class="text-lg font-bold text-primary">Reserve Item</h3>
                 <button @click="reserveModal = false" class="text-secondary hover:text-primary transition-colors"><i class="fa-solid fa-xmark"></i></button>
@@ -288,13 +288,18 @@ require_once __DIR__ . '/../layouts/header.php';
                     <p class="text-sm font-bold text-accent">₱<span x-text="reservationSelectedPrice"></span></p>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Customer Name</label>
+                    <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Customer Name <span class="text-accent">*</span></label>
                     <input type="text" x-model="reservationForm.customerName" required
                         class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all text-sm">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Contact Number</label>
-                    <input type="text" x-model="reservationForm.contactNumber" required
+                    <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Contact Number <span class="text-accent">*</span></label>
+                    <input type="tel" x-model="reservationForm.contactNumber" required minlength="11" maxlength="11" pattern="\d{11}"
+                        class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-widest">Quantity of items to reserve</label>
+                    <input type="number" x-model.number="reservationForm.quantity" min="1" required
                         class="w-full px-4 py-2.5 bg-background border border-border focus:ring-1 focus:ring-accent focus:border-accent rounded-lg outline-none transition-all text-sm">
                 </div>
                 <div>
@@ -401,20 +406,20 @@ require_once __DIR__ . '/../layouts/header.php';
                             <h4 class="text-xs font-bold uppercase tracking-widest text-secondary">Card</h4>
                             <div class="space-y-3">
                                 <div>
-                                    <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Cardholder Name</label>
+                                    <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Cardholder Name <span class="text-accent">*</span></label>
                                     <input type="text" x-model="cardHolderName" placeholder="Full Name" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Card Number</label>
+                                    <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Card Number <span class="text-accent">*</span></label>
                                     <input type="text" x-model="cardNumber" @input="formatCardNumber($event)" placeholder="1234 5678 9012 3456" maxlength="19" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
                                 </div>
                                 <div class="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">CVV</label>
+                                        <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">CVV <span class="text-accent">*</span></label>
                                         <input type="text" x-model="cardCvv" placeholder="123" maxlength="3" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
                                     </div>
                                     <div>
-                                        <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Expiry Date</label>
+                                        <label class="block text-xs font-bold text-secondary mb-1 uppercase tracking-widest">Expiry Date <span class="text-accent">*</span></label>
                                         <input type="text" x-model="cardExpiry" @input="formatCardExpiry($event)" placeholder="MM/YY" maxlength="5" class="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm">
                                     </div>
                                 </div>
@@ -537,7 +542,7 @@ require_once __DIR__ . '/../layouts/header.php';
     </div>
 
     <!-- Camera Modal -->
-    <div x-show="cameraModalActive" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center p-0 md:p-4 bg-primary/40 backdrop-blur-sm">
+    <div x-show="cameraModalActive" x-cloak @click.stop class="fixed inset-0 z-[70] flex items-center justify-center p-0 md:p-4 bg-primary/40 backdrop-blur-sm">
         <div class="bg-surface w-full h-full md:max-w-2xl md:h-auto md:rounded-xl overflow-hidden shadow-xl border border-border md:border">
             <!-- Header -->
             <div class="p-4 md:p-6 border-b border-border flex items-center justify-between bg-surface">
@@ -642,7 +647,8 @@ function posApp() {
         reservationForm: {
             customerName: '',
             contactNumber: '',
-            duration: 1
+            duration: 1,
+            quantity: 1
         },
 
         get categoryFilters() {
@@ -739,6 +745,7 @@ function posApp() {
         openReservationForm() {
             this.reservePriceModal = false;
             this.reserveModal = true;
+            this.reservationForm.quantity = 1;
         },
 
         addToCart() {
@@ -765,13 +772,29 @@ function posApp() {
         },
 
         async submitReservation() {
-            if (!this.reservationCapturedImage || !this.reservationSelectedPrice) return;
+            const quantity = parseInt(this.reservationForm.quantity, 10) || 1;
+            const customerName = (this.reservationForm.customerName || '').trim();
+            const contactNumber = (this.reservationForm.contactNumber || '').trim();
+
+            if (!customerName || !contactNumber || contactNumber.length !== 11 || !/^[0-9]+$/.test(contactNumber)) {
+                alert('Please enter a valid customer name and 11-digit contact number.');
+                return;
+            }
+            if (!this.reservationCapturedImage || !this.reservationSelectedPrice) {
+                alert('Please capture a photo and select a reservation price before continuing.');
+                return;
+            }
+            if (quantity < 1) {
+                alert('Please enter a valid reservation quantity.');
+                return;
+            }
             
             const formData = new FormData();
             formData.append('category_id', this.selectedCategory.id);
-            formData.append('customer_name', this.reservationForm.customerName);
-            formData.append('contact_number', this.reservationForm.contactNumber);
+            formData.append('customer_name', customerName);
+            formData.append('contact_number', contactNumber);
             formData.append('duration', this.reservationForm.duration);
+            formData.append('quantity', quantity);
             formData.append('image', this.reservationImageData);
             formData.append('price', this.reservationSelectedPrice);
             
@@ -837,7 +860,6 @@ function posApp() {
             this.paymentModal = type;
             this.cashReceived = '';
             this.change = 0;
-            this.bargainedPrice = '';
             this.selectedEpaymentCategory = '';
             this.selectedEpaymentMethod = '';
             this.paymentResult = '';
@@ -1067,7 +1089,7 @@ function posApp() {
                     },
                     body: JSON.stringify({
                         items: items,
-                        total: parseFloat(this.cartTotal().replace(/,/g, '')),
+                        total: finalAmount,
                         final_total: finalAmount,
                         bargained_price: this.bargainedPrice ? parseFloat(this.bargainedPrice) : null,
                         payment_method: paymentMethod,
